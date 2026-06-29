@@ -32,6 +32,10 @@ dotnet test Pgm.slnx -c Release
 
 - [In memory Publish/Subscriber](samples/README.md) — 🚀 publisher + two subscribers over the in-memory bus; runs anywhere, no real multicast.
 
+## 📊 Benchmarks
+
+- [Pgm.Benchmarks](benchmarks/README.md) — BenchmarkDotNet micro-benchmarks for codec, checksum, and FEC.
+
 ## 📄 License
 
 [MIT](./LICENSE)

@@ -1,6 +1,6 @@
 # Benchmarks
 
-[BenchmarkDotNet](https://benchmarkdotnet.org/) results for the `Pgm` hot paths. The harness lives in [`benchmarks/Pgm.Benchmarks`](../benchmarks/Pgm.Benchmarks/README.md) and every benchmark uses `[MemoryDiagnoser]`.
+[BenchmarkDotNet](https://benchmarkdotnet.org/) results for the `Pgm` hot paths. The harness lives in [`benchmarks/`](../benchmarks/README.md) and every benchmark uses `[MemoryDiagnoser]`.
 
 Reproduce with:
 

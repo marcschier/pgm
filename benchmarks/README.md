@@ -25,4 +25,4 @@ Filter by name, e.g. `--filter '*Checksum*'`. Results are written to `BenchmarkD
 | `ChecksumBenchmarks` | `PgmChecksum.Compute` (SIMD on net8+, scalar fallback) across packet sizes. |
 | `FecBenchmarks` | `ReedSolomon.Encode` (GF256 multiply-add, SSSE3/AVX2 on net8+) across group/block sizes. |
 
-A representative captured run lives in [docs/benchmarks.md](../../docs/benchmarks.md). Numbers are machine-specific; re-run locally to compare. CI runs the `--job Dry` smoke to keep the harness green without gating on timings.
+A representative captured run lives in [docs/benchmarks.md](../docs/benchmarks.md). Numbers are machine-specific; re-run locally to compare. CI runs the `--job Dry` smoke to keep the harness green without gating on timings.
