@@ -10,13 +10,13 @@ namespace Pgm;
 /// <summary>Subscribes to APDUs from a reliable PGM multicast session.</summary>
 public sealed class PgmSubscriber : IAsyncDisposable
 {
-    private readonly PgmReceiver receiver;
-    private readonly Channel<byte[]> messages;
-    private readonly CancellationTokenSource stop = new();
-    private readonly SemaphoreSlim startGate = new(1, 1);
-    private Task? pumpTask;
-    private bool started;
-    private bool disposed;
+    private readonly PgmReceiver _receiver;
+    private readonly Channel<byte[]> _messages;
+    private readonly CancellationTokenSource _stop = new();
+    private readonly SemaphoreSlim _startGate = new(1, 1);
+    private Task? _pumpTask;
+    private bool _started;
+    private bool _disposed;
 
     /// <summary>Initializes a new instance of the <see cref="PgmSubscriber" /> class over UDP multicast.</summary>
     /// <param name="options">The subscriber options.</param>
@@ -40,11 +40,11 @@ public sealed class PgmSubscriber : IAsyncDisposable
 #endif
 
         PgmSubscriberOptions subscriberOptions = (options ?? new PgmSubscriberOptions()).Clone();
-        receiver = new PgmReceiver(
+        _receiver = new PgmReceiver(
             new StartupSpmFilteringChannel(channel),
             TimeProvider.System,
             CreateReceiverOptions(subscriberOptions));
-        messages = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions
+        _messages = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions
         {
             SingleReader = false,
             SingleWriter = true,
@@ -53,7 +53,7 @@ public sealed class PgmSubscriber : IAsyncDisposable
     }
 
     /// <summary>Gets a reader for received APDUs.</summary>
-    public ChannelReader<byte[]> Messages => messages.Reader;
+    public ChannelReader<byte[]> Messages => _messages.Reader;
 
     /// <summary>Starts receiving APDUs from the multicast session.</summary>
     /// <param name="cancellationToken">A token that can cancel startup.</param>
@@ -62,24 +62,24 @@ public sealed class PgmSubscriber : IAsyncDisposable
     {
         ThrowIfDisposed();
 
-        if (started)
+        if (_started)
         {
             return;
         }
 
-        await startGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _startGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!started)
+            if (!_started)
             {
-                await receiver.StartAsync(cancellationToken).ConfigureAwait(false);
-                pumpTask = Task.Run(PumpAsync, CancellationToken.None);
-                started = true;
+                await _receiver.StartAsync(cancellationToken).ConfigureAwait(false);
+                _pumpTask = Task.Run(PumpAsync, CancellationToken.None);
+                _started = true;
             }
         }
         finally
         {
-            startGate.Release();
+            _startGate.Release();
         }
     }
 
@@ -89,24 +89,24 @@ public sealed class PgmSubscriber : IAsyncDisposable
     public async ValueTask<byte[]> ReceiveAsync(CancellationToken cancellationToken = default)
     {
         await StartAsync(cancellationToken).ConfigureAwait(false);
-        return await messages.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+        return await _messages.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        if (disposed)
+        if (_disposed)
         {
             return;
         }
 
-        disposed = true;
-        stop.Cancel();
+        _disposed = true;
+        _stop.Cancel();
         await AwaitPumpAsync().ConfigureAwait(false);
-        await receiver.DisposeAsync().ConfigureAwait(false);
-        messages.Writer.TryComplete();
-        stop.Dispose();
-        startGate.Dispose();
+        await _receiver.DisposeAsync().ConfigureAwait(false);
+        _messages.Writer.TryComplete();
+        _stop.Dispose();
+        _startGate.Dispose();
     }
 
     private static UdpMulticastChannel CreateUdpChannel(PgmSubscriberOptions options)
@@ -145,10 +145,10 @@ public sealed class PgmSubscriber : IAsyncDisposable
     {
         try
         {
-            while (!stop.IsCancellationRequested)
+            while (!_stop.IsCancellationRequested)
             {
-                byte[] message = await receiver.ReceiveAsync(stop.Token).ConfigureAwait(false);
-                await messages.Writer.WriteAsync(message, stop.Token).ConfigureAwait(false);
+                byte[] message = await _receiver.ReceiveAsync(_stop.Token).ConfigureAwait(false);
+                await _messages.Writer.WriteAsync(message, _stop.Token).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -159,20 +159,20 @@ public sealed class PgmSubscriber : IAsyncDisposable
         }
         finally
         {
-            messages.Writer.TryComplete();
+            _messages.Writer.TryComplete();
         }
     }
 
     private async ValueTask AwaitPumpAsync()
     {
-        if (pumpTask is null)
+        if (_pumpTask is null)
         {
             return;
         }
 
         try
         {
-            await pumpTask.ConfigureAwait(false);
+            await _pumpTask.ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -182,9 +182,9 @@ public sealed class PgmSubscriber : IAsyncDisposable
     private void ThrowIfDisposed()
     {
 #if NET8_0_OR_GREATER
-        ObjectDisposedException.ThrowIf(disposed, this);
+        ObjectDisposedException.ThrowIf(_disposed, this);
 #else
-        if (disposed)
+        if (_disposed)
         {
             throw new ObjectDisposedException(nameof(PgmSubscriber));
         }
@@ -193,23 +193,23 @@ public sealed class PgmSubscriber : IAsyncDisposable
 
     private sealed class StartupSpmFilteringChannel : IPgmDatagramChannel
     {
-        private readonly IPgmDatagramChannel inner;
+        private readonly IPgmDatagramChannel _inner;
 
         internal StartupSpmFilteringChannel(IPgmDatagramChannel inner)
         {
-            this.inner = inner;
+            _inner = inner;
         }
 
         public ValueTask SendAsync(ReadOnlyMemory<byte> datagram, CancellationToken cancellationToken = default)
         {
-            return inner.SendAsync(datagram, cancellationToken);
+            return _inner.SendAsync(datagram, cancellationToken);
         }
 
         public async ValueTask<int> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
             while (true)
             {
-                int length = await inner.ReceiveAsync(buffer, cancellationToken).ConfigureAwait(false);
+                int length = await _inner.ReceiveAsync(buffer, cancellationToken).ConfigureAwait(false);
                 if (!IsEmptyStartupSpm(buffer.Span.Slice(0, length)))
                 {
                     return length;
@@ -219,7 +219,7 @@ public sealed class PgmSubscriber : IAsyncDisposable
 
         public ValueTask DisposeAsync()
         {
-            return inner.DisposeAsync();
+            return _inner.DisposeAsync();
         }
 
         private static bool IsEmptyStartupSpm(ReadOnlySpan<byte> datagram)

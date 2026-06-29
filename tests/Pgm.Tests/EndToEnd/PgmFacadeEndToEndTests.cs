@@ -106,8 +106,8 @@ public sealed class EndToEndPgmFacadeTests
 
     private sealed class LossyMulticastBus : IMulticastBus
     {
-        private readonly object gate = new();
-        private readonly List<LossyDatagramChannel> channels = new();
+        private readonly object _gate = new();
+        private readonly List<LossyDatagramChannel> _channels = new();
 
         public IPgmDatagramChannel CreatePublisherChannel()
         {
@@ -121,17 +121,17 @@ public sealed class EndToEndPgmFacadeTests
 
         internal void Unregister(LossyDatagramChannel channel)
         {
-            lock (gate)
+            lock (_gate)
             {
-                channels.Remove(channel);
+                _channels.Remove(channel);
             }
         }
 
         internal void Publish(ReadOnlyMemory<byte> datagram)
         {
-            lock (gate)
+            lock (_gate)
             {
-                foreach (LossyDatagramChannel channel in channels)
+                foreach (LossyDatagramChannel channel in _channels)
                 {
                     if (TryCreateSourceNak(datagram.Span, out byte[]? sourceNak))
                     {
@@ -155,9 +155,9 @@ public sealed class EndToEndPgmFacadeTests
         {
             var channel = new LossyDatagramChannel(this, dropOriginalData);
 
-            lock (gate)
+            lock (_gate)
             {
-                channels.Add(channel);
+                _channels.Add(channel);
             }
 
             return channel;
@@ -206,13 +206,13 @@ public sealed class EndToEndPgmFacadeTests
 
     private sealed class LossyDatagramChannel : IPgmDatagramChannel
     {
-        private readonly LossyMulticastBus bus;
-        private readonly Channel<byte[]> received = Channel.CreateUnbounded<byte[]>();
-        private bool disposed;
+        private readonly LossyMulticastBus _bus;
+        private readonly Channel<byte[]> _received = Channel.CreateUnbounded<byte[]>();
+        private bool _disposed;
 
         internal LossyDatagramChannel(LossyMulticastBus bus, bool dropOriginalData)
         {
-            this.bus = bus;
+            _bus = bus;
             DropOriginalData = dropOriginalData;
         }
 
@@ -221,24 +221,24 @@ public sealed class EndToEndPgmFacadeTests
         public ValueTask SendAsync(ReadOnlyMemory<byte> datagram, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            bus.Publish(datagram);
+            _bus.Publish(datagram);
             return default;
         }
 
         public async ValueTask<int> ReceiveAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            byte[] datagram = await received.Reader.ReadAsync(cancellationToken);
+            byte[] datagram = await _received.Reader.ReadAsync(cancellationToken);
             datagram.AsMemory().CopyTo(buffer);
             return datagram.Length;
         }
 
         public ValueTask DisposeAsync()
         {
-            if (!disposed)
+            if (!_disposed)
             {
-                disposed = true;
-                bus.Unregister(this);
-                received.Writer.TryComplete();
+                _disposed = true;
+                _bus.Unregister(this);
+                _received.Writer.TryComplete();
             }
 
             return default;
@@ -246,30 +246,30 @@ public sealed class EndToEndPgmFacadeTests
 
         internal void Enqueue(ReadOnlyMemory<byte> datagram)
         {
-            if (!disposed)
+            if (!_disposed)
             {
-                received.Writer.TryWrite(datagram.ToArray());
+                _received.Writer.TryWrite(datagram.ToArray());
             }
         }
     }
 
     private sealed class InMemoryBusAdapter : IMulticastBus
     {
-        private readonly InMemoryMulticastBus bus;
+        private readonly InMemoryMulticastBus _bus;
 
         internal InMemoryBusAdapter(InMemoryMulticastBus bus)
         {
-            this.bus = bus;
+            _bus = bus;
         }
 
         public IPgmDatagramChannel CreatePublisherChannel()
         {
-            return bus.CreateChannel();
+            return _bus.CreateChannel();
         }
 
         public IPgmDatagramChannel CreateSubscriberChannel()
         {
-            return bus.CreateChannel();
+            return _bus.CreateChannel();
         }
     }
 }

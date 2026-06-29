@@ -6,13 +6,13 @@ namespace Pgm.Receiver;
 
 internal readonly struct SourceKey : IEquatable<SourceKey>
 {
-    private readonly ulong globalSourceId;
-    private readonly ushort sourcePort;
+    private readonly ulong _globalSourceId;
+    private readonly ushort _sourcePort;
 
     private SourceKey(ulong globalSourceId, ushort sourcePort)
     {
-        this.globalSourceId = globalSourceId;
-        this.sourcePort = sourcePort;
+        _globalSourceId = globalSourceId;
+        _sourcePort = sourcePort;
     }
 
     public static SourceKey FromHeader(PgmHeader header)
@@ -22,7 +22,7 @@ internal readonly struct SourceKey : IEquatable<SourceKey>
 
     public bool Equals(SourceKey other)
     {
-        return globalSourceId == other.globalSourceId && sourcePort == other.sourcePort;
+        return _globalSourceId == other._globalSourceId && _sourcePort == other._sourcePort;
     }
 
     public override bool Equals(object? obj)
@@ -34,7 +34,7 @@ internal readonly struct SourceKey : IEquatable<SourceKey>
     {
         unchecked
         {
-            return ((int)globalSourceId * 397) ^ sourcePort;
+            return ((int)_globalSourceId * 397) ^ _sourcePort;
         }
     }
 }

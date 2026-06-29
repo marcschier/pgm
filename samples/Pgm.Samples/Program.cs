@@ -27,10 +27,10 @@ foreach (string message in messages)
     await publisher.PublishAsync(Encoding.UTF8.GetBytes(message), timeout.Token);
 }
 
-await PrintMessagesAsync("subscriber-1", first, messages.Length, timeout.Token);
-await PrintMessagesAsync("subscriber-2", second, messages.Length, timeout.Token);
+await printMessagesAsync("subscriber-1", first, messages.Length, timeout.Token);
+await printMessagesAsync("subscriber-2", second, messages.Length, timeout.Token);
 
-static async Task PrintMessagesAsync(
+static async Task printMessagesAsync(
     string name,
     PgmSubscriber subscriber,
     int count,

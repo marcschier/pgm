@@ -7,24 +7,24 @@ namespace Pgm.Net;
 /// <summary>Provides an in-memory datagram channel backed by an <see cref="InMemoryMulticastBus" />.</summary>
 public sealed class InMemoryDatagramChannel : IPgmDatagramChannel
 {
-    private readonly object gate = new();
-    private readonly InMemoryMulticastBus bus;
-    private readonly Channel<byte[]> received;
-    private byte[]? postponed;
-    private bool disposed;
+    private readonly object _gate = new();
+    private readonly InMemoryMulticastBus _bus;
+    private readonly Channel<byte[]> _received;
+    private byte[]? _postponed;
+    private bool _disposed;
 
     /// <summary>Initializes a new instance of the <see cref="InMemoryDatagramChannel" /> class.</summary>
     /// <param name="bus">The bus to join.</param>
     public InMemoryDatagramChannel(InMemoryMulticastBus bus)
     {
-        this.bus = bus ?? throw new ArgumentNullException(nameof(bus));
-        received = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions
+        _bus = bus ?? throw new ArgumentNullException(nameof(bus));
+        _received = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions
         {
             SingleReader = false,
             SingleWriter = false,
             AllowSynchronousContinuations = false,
         });
-        this.bus.Register(this);
+        _bus.Register(this);
     }
 
     /// <inheritdoc />
@@ -33,7 +33,7 @@ public sealed class InMemoryDatagramChannel : IPgmDatagramChannel
         EnsureNotDisposed();
         cancellationToken.ThrowIfCancellationRequested();
 
-        bus.Publish(datagram);
+        _bus.Publish(datagram);
         return default;
     }
 
@@ -42,7 +42,7 @@ public sealed class InMemoryDatagramChannel : IPgmDatagramChannel
     {
         EnsureNotDisposed();
 
-        byte[] datagram = await received.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+        byte[] datagram = await _received.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
         int byteCount = Math.Min(buffer.Length, datagram.Length);
         datagram.AsMemory(0, byteCount).CopyTo(buffer);
         return byteCount;
@@ -51,15 +51,15 @@ public sealed class InMemoryDatagramChannel : IPgmDatagramChannel
     /// <inheritdoc />
     public ValueTask DisposeAsync()
     {
-        if (!disposed)
+        if (!_disposed)
         {
-            disposed = true;
-            bus.Unregister(this);
+            _disposed = true;
+            _bus.Unregister(this);
 
-            lock (gate)
+            lock (_gate)
             {
                 FlushPostponed();
-                received.Writer.TryComplete();
+                _received.Writer.TryComplete();
             }
         }
 
@@ -70,39 +70,39 @@ public sealed class InMemoryDatagramChannel : IPgmDatagramChannel
     {
         byte[] copy = datagram.ToArray();
 
-        lock (gate)
+        lock (_gate)
         {
-            if (disposed)
+            if (_disposed)
             {
                 return;
             }
 
-            if (reorder && postponed is null)
+            if (reorder && _postponed is null)
             {
-                postponed = copy;
+                _postponed = copy;
                 return;
             }
 
-            received.Writer.TryWrite(copy);
+            _received.Writer.TryWrite(copy);
             FlushPostponed();
         }
     }
 
     private void FlushPostponed()
     {
-        if (postponed is not null)
+        if (_postponed is not null)
         {
-            received.Writer.TryWrite(postponed);
-            postponed = null;
+            _received.Writer.TryWrite(_postponed);
+            _postponed = null;
         }
     }
 
     private void EnsureNotDisposed()
     {
 #if NET8_0_OR_GREATER
-        ObjectDisposedException.ThrowIf(disposed, this);
+        ObjectDisposedException.ThrowIf(_disposed, this);
 #else
-        if (disposed)
+        if (_disposed)
         {
             throw new ObjectDisposedException(nameof(InMemoryDatagramChannel));
         }

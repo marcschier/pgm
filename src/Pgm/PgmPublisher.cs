@@ -8,10 +8,10 @@ namespace Pgm;
 /// <summary>Publishes APDUs to a reliable PGM multicast session.</summary>
 public sealed class PgmPublisher : IAsyncDisposable
 {
-    private readonly PgmSender sender;
-    private readonly SemaphoreSlim startGate = new(1, 1);
-    private bool started;
-    private bool disposed;
+    private readonly PgmSender _sender;
+    private readonly SemaphoreSlim _startGate = new(1, 1);
+    private bool _started;
+    private bool _disposed;
 
     /// <summary>Initializes a new instance of the <see cref="PgmPublisher" /> class over UDP multicast.</summary>
     /// <param name="options">The publisher options.</param>
@@ -35,7 +35,7 @@ public sealed class PgmPublisher : IAsyncDisposable
 #endif
 
         PgmPublisherOptions publisherOptions = (options ?? new PgmPublisherOptions()).Clone();
-        sender = new PgmSender(channel, CreateSenderOptions(publisherOptions));
+        _sender = new PgmSender(channel, CreateSenderOptions(publisherOptions));
     }
 
     /// <summary>Starts the publisher source state machine.</summary>
@@ -45,23 +45,23 @@ public sealed class PgmPublisher : IAsyncDisposable
     {
         ThrowIfDisposed();
 
-        if (started)
+        if (_started)
         {
             return;
         }
 
-        await startGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _startGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!started)
+            if (!_started)
             {
-                await sender.StartAsync(cancellationToken).ConfigureAwait(false);
-                started = true;
+                await _sender.StartAsync(cancellationToken).ConfigureAwait(false);
+                _started = true;
             }
         }
         finally
         {
-            startGate.Release();
+            _startGate.Release();
         }
     }
 
@@ -72,20 +72,20 @@ public sealed class PgmPublisher : IAsyncDisposable
     public async ValueTask PublishAsync(ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default)
     {
         await StartAsync(cancellationToken).ConfigureAwait(false);
-        await sender.SendAsync(payload, cancellationToken).ConfigureAwait(false);
+        await _sender.SendAsync(payload, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        if (disposed)
+        if (_disposed)
         {
             return;
         }
 
-        disposed = true;
-        startGate.Dispose();
-        await sender.DisposeAsync().ConfigureAwait(false);
+        _disposed = true;
+        _startGate.Dispose();
+        await _sender.DisposeAsync().ConfigureAwait(false);
     }
 
     private static UdpMulticastChannel CreateUdpChannel(PgmPublisherOptions options)
@@ -124,9 +124,9 @@ public sealed class PgmPublisher : IAsyncDisposable
     private void ThrowIfDisposed()
     {
 #if NET8_0_OR_GREATER
-        ObjectDisposedException.ThrowIf(disposed, this);
+        ObjectDisposedException.ThrowIf(_disposed, this);
 #else
-        if (disposed)
+        if (_disposed)
         {
             throw new ObjectDisposedException(nameof(PgmPublisher));
         }

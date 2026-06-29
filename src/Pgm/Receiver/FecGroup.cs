@@ -6,7 +6,7 @@ namespace Pgm.Receiver;
 
 internal sealed class FecGroup
 {
-    private readonly SortedDictionary<int, ReceivedPacket> blocks = new();
+    private readonly SortedDictionary<int, ReceivedPacket> _blocks = new();
 
     public FecGroup(uint firstSequenceNumber, int sourceCount)
     {
@@ -18,16 +18,16 @@ internal sealed class FecGroup
 
     public int SourceCount { get; }
 
-    public bool CanDecode => blocks.Count >= SourceCount && GetParityCount() > 0;
+    public bool CanDecode => _blocks.Count >= SourceCount && GetParityCount() > 0;
 
     public bool TryAdd(int index, ReceivedPacket packet)
     {
-        if (index < 0 || index >= 256 || blocks.ContainsKey(index))
+        if (index < 0 || index >= 256 || _blocks.ContainsKey(index))
         {
             return false;
         }
 
-        blocks.Add(index, packet);
+        _blocks.Add(index, packet);
         return CanDecode;
     }
 
@@ -37,7 +37,7 @@ internal sealed class FecGroup
         var indices = new List<int>();
         int blockSize = -1;
 
-        foreach (KeyValuePair<int, ReceivedPacket> block in blocks)
+        foreach (KeyValuePair<int, ReceivedPacket> block in _blocks)
         {
             if (blockSize < 0)
             {
@@ -62,7 +62,7 @@ internal sealed class FecGroup
     private int GetParityCount()
     {
         int count = 0;
-        foreach (int index in blocks.Keys)
+        foreach (int index in _blocks.Keys)
         {
             if (index >= SourceCount)
             {

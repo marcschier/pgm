@@ -6,18 +6,18 @@ namespace Pgm.Receiver;
 
 internal sealed class ReceiveWindow
 {
-    private readonly SourceKey sourceKey;
-    private readonly PgmReceiver receiver;
-    private readonly PgmReceiverOptions options;
-    private readonly TimeProvider timeProvider;
-    private readonly SortedDictionary<uint, ReceivedPacket> packets = new();
-    private readonly Dictionary<uint, NakState> naks = new();
-    private readonly Dictionary<uint, FragmentAssembly> fragments = new();
-    private readonly Dictionary<uint, FecGroup> fecGroups = new();
-    private readonly Queue<byte[]> completedApdus = new();
-    private PgmNetworkAddress? sourcePath;
-    private uint expectedSequence;
-    private bool hasExpectedSequence;
+    private readonly SourceKey _sourceKey;
+    private readonly PgmReceiver _receiver;
+    private readonly PgmReceiverOptions _options;
+    private readonly TimeProvider _timeProvider;
+    private readonly SortedDictionary<uint, ReceivedPacket> _packets = new();
+    private readonly Dictionary<uint, NakState> _naks = new();
+    private readonly Dictionary<uint, FragmentAssembly> _fragments = new();
+    private readonly Dictionary<uint, FecGroup> _fecGroups = new();
+    private readonly Queue<byte[]> _completedApdus = new();
+    private PgmNetworkAddress? _sourcePath;
+    private uint _expectedSequence;
+    private bool _hasExpectedSequence;
 
     public ReceiveWindow(
         SourceKey sourceKey,
@@ -25,10 +25,10 @@ internal sealed class ReceiveWindow
         PgmReceiverOptions options,
         TimeProvider timeProvider)
     {
-        this.sourceKey = sourceKey;
-        this.receiver = receiver;
-        this.options = options;
-        this.timeProvider = timeProvider;
+        _sourceKey = sourceKey;
+        _receiver = receiver;
+        _options = options;
+        _timeProvider = timeProvider;
     }
 
     public bool ProcessPacket(PgmPacket packet)
@@ -58,9 +58,9 @@ internal sealed class ReceiveWindow
     {
         var lost = new List<uint>();
 
-        foreach (NakState nak in naks.Values)
+        foreach (NakState nak in _naks.Values)
         {
-            if (packets.ContainsKey(nak.SequenceNumber))
+            if (_packets.ContainsKey(nak.SequenceNumber))
             {
                 lost.Add(nak.SequenceNumber);
                 continue;
@@ -71,20 +71,20 @@ internal sealed class ReceiveWindow
                 continue;
             }
 
-            if (nak.Attempts >= options.MaximumNakAttempts)
+            if (nak.Attempts >= _options.MaximumNakAttempts)
             {
                 lost.Add(nak.SequenceNumber);
                 continue;
             }
 
             packetsToSend.Add(CreateNak(nak.SequenceNumber));
-            nak.MarkSent(now, options.InitialNakBackoff, options.MaximumNakBackoff,
-                TimestampFromTimeSpan(options.NakConfirmationTimeout));
+            nak.MarkSent(now, _options.InitialNakBackoff, _options.MaximumNakBackoff,
+                TimestampFromTimeSpan(_options.NakConfirmationTimeout));
         }
 
         for (int index = 0; index < lost.Count; index++)
         {
-            naks.Remove(lost[index]);
+            _naks.Remove(lost[index]);
         }
 
         if (lost.Count > 0)
@@ -95,56 +95,56 @@ internal sealed class ReceiveWindow
 
     public bool TryDequeueCompletedApdu(out byte[]? apdu)
     {
-        if (completedApdus.Count == 0)
+        if (_completedApdus.Count == 0)
         {
             apdu = null;
             return false;
         }
 
-        apdu = completedApdus.Dequeue();
+        apdu = _completedApdus.Dequeue();
         return true;
     }
 
     private void ProcessSpm(PgmSourcePathMessage spm)
     {
-        sourcePath = spm.Path;
+        _sourcePath = spm.Path;
 
-        if (!hasExpectedSequence)
+        if (!_hasExpectedSequence)
         {
-            expectedSequence = spm.TrailingEdgeSequenceNumber;
-            hasExpectedSequence = true;
+            _expectedSequence = spm.TrailingEdgeSequenceNumber;
+            _hasExpectedSequence = true;
         }
 
         RemoveBefore(spm.TrailingEdgeSequenceNumber);
 
-        while (hasExpectedSequence && SequenceLessThan(expectedSequence, spm.TrailingEdgeSequenceNumber))
+        while (_hasExpectedSequence && SequenceLessThan(_expectedSequence, spm.TrailingEdgeSequenceNumber))
         {
-            naks.Remove(expectedSequence);
-            expectedSequence++;
+            _naks.Remove(_expectedSequence);
+            _expectedSequence++;
         }
     }
 
     private bool ProcessData(PgmPacket packet, PgmDataPacket data)
     {
-        if (!hasExpectedSequence)
+        if (!_hasExpectedSequence)
         {
-            expectedSequence = data.TrailingEdgeSequenceNumber;
-            hasExpectedSequence = true;
+            _expectedSequence = data.TrailingEdgeSequenceNumber;
+            _hasExpectedSequence = true;
         }
 
         RemoveBefore(data.TrailingEdgeSequenceNumber);
 
-        if (SequenceLessThan(data.SequenceNumber, expectedSequence))
+        if (SequenceLessThan(data.SequenceNumber, _expectedSequence))
         {
             return false;
         }
 
-        if (!packets.ContainsKey(data.SequenceNumber))
+        if (!_packets.ContainsKey(data.SequenceNumber))
         {
-            packets.Add(data.SequenceNumber, ReceivedPacket.FromPacket(packet, data));
+            _packets.Add(data.SequenceNumber, ReceivedPacket.FromPacket(packet, data));
         }
 
-        naks.Remove(data.SequenceNumber);
+        _naks.Remove(data.SequenceNumber);
         TrackFec(packet, data);
         DetectGaps(data.SequenceNumber);
         DeliverAvailable();
@@ -153,31 +153,31 @@ internal sealed class ReceiveWindow
 
     private void ProcessNakConfirmation(PgmNakPacket nak)
     {
-        if (naks.TryGetValue(nak.SequenceNumber, out var state))
+        if (_naks.TryGetValue(nak.SequenceNumber, out var state))
         {
-            state.MarkConfirmed(timeProvider.GetTimestamp(), TimestampFromTimeSpan(state.CurrentBackoff));
+            state.MarkConfirmed(_timeProvider.GetTimestamp(), TimestampFromTimeSpan(state.CurrentBackoff));
         }
     }
 
     private void DetectGaps(uint seenSequence)
     {
-        for (uint sequence = expectedSequence; SequenceLessThan(sequence, seenSequence); sequence++)
+        for (uint sequence = _expectedSequence; SequenceLessThan(sequence, seenSequence); sequence++)
         {
-            if (!packets.ContainsKey(sequence) && !naks.ContainsKey(sequence))
+            if (!_packets.ContainsKey(sequence) && !_naks.ContainsKey(sequence))
             {
-                naks.Add(sequence, new NakState(sequence, timeProvider.GetTimestamp()));
+                _naks.Add(sequence, new NakState(sequence, _timeProvider.GetTimestamp()));
             }
         }
     }
 
     private void DeliverAvailable()
     {
-        while (packets.TryGetValue(expectedSequence, out var packet))
+        while (_packets.TryGetValue(_expectedSequence, out var packet))
         {
-            packets.Remove(expectedSequence);
-            naks.Remove(expectedSequence);
+            _packets.Remove(_expectedSequence);
+            _naks.Remove(_expectedSequence);
             QueueApdu(packet);
-            expectedSequence++;
+            _expectedSequence++;
         }
     }
 
@@ -185,20 +185,20 @@ internal sealed class ReceiveWindow
     {
         if (!packet.HasFragment)
         {
-            completedApdus.Enqueue(packet.Data);
+            _completedApdus.Enqueue(packet.Data);
             return;
         }
 
-        if (!fragments.TryGetValue(packet.FragmentFirstSequence, out var assembly))
+        if (!_fragments.TryGetValue(packet.FragmentFirstSequence, out var assembly))
         {
             assembly = new FragmentAssembly(packet.FragmentLength);
-            fragments.Add(packet.FragmentFirstSequence, assembly);
+            _fragments.Add(packet.FragmentFirstSequence, assembly);
         }
 
         if (assembly.TryAdd(packet.FragmentOffset, packet.Data) && assembly.IsComplete)
         {
-            completedApdus.Enqueue(assembly.ToArray());
-            fragments.Remove(packet.FragmentFirstSequence);
+            _completedApdus.Enqueue(assembly.ToArray());
+            _fragments.Remove(packet.FragmentFirstSequence);
         }
     }
 
@@ -211,10 +211,10 @@ internal sealed class ReceiveWindow
             return;
         }
 
-        if (!fecGroups.TryGetValue(details.ParityGroupNumber, out var group))
+        if (!_fecGroups.TryGetValue(details.ParityGroupNumber, out var group))
         {
             group = new FecGroup(details.ParityGroupNumber, (int)details.TransmissionGroupSize);
-            fecGroups.Add(details.ParityGroupNumber, group);
+            _fecGroups.Add(details.ParityGroupNumber, group);
         }
 
         int index = (int)(data.SequenceNumber - details.ParityGroupNumber);
@@ -253,10 +253,10 @@ internal sealed class ReceiveWindow
         for (int index = 0; index < decoded.Length; index++)
         {
             uint sequence = group.FirstSequenceNumber + (uint)index;
-            if (!packets.ContainsKey(sequence))
+            if (!_packets.ContainsKey(sequence))
             {
-                packets.Add(sequence, ReceivedPacket.FromRepairedSource(sequence, decoded[index]));
-                naks.Remove(sequence);
+                _packets.Add(sequence, ReceivedPacket.FromRepairedSource(sequence, decoded[index]));
+                _naks.Remove(sequence);
             }
         }
 
@@ -265,11 +265,13 @@ internal sealed class ReceiveWindow
 
     private void AdvancePastLostData()
     {
-        while (hasExpectedSequence && !packets.ContainsKey(expectedSequence) && !naks.ContainsKey(expectedSequence))
+        while (_hasExpectedSequence
+            && !_packets.ContainsKey(_expectedSequence)
+            && !_naks.ContainsKey(_expectedSequence))
         {
-            expectedSequence++;
+            _expectedSequence++;
 
-            if (packets.Count == 0)
+            if (_packets.Count == 0)
             {
                 break;
             }
@@ -280,13 +282,13 @@ internal sealed class ReceiveWindow
 
     private void RemoveBefore(uint sequence)
     {
-        while (packets.Count > options.ReceiveWindowSize)
+        while (_packets.Count > _options.ReceiveWindowSize)
         {
-            packets.Remove(packets.Keys.First());
+            _packets.Remove(_packets.Keys.First());
         }
 
         var removeNaks = new List<uint>();
-        foreach (uint nak in naks.Keys)
+        foreach (uint nak in _naks.Keys)
         {
             if (SequenceLessThan(nak, sequence))
             {
@@ -296,21 +298,24 @@ internal sealed class ReceiveWindow
 
         for (int index = 0; index < removeNaks.Count; index++)
         {
-            naks.Remove(removeNaks[index]);
+            _naks.Remove(removeNaks[index]);
         }
     }
 
     private PgmPacket CreateNak(uint sequenceNumber)
     {
-        var body = new PgmNakPacket(sequenceNumber, sourcePath ?? options.DefaultSourceAddress, options.GroupAddress);
+        var body = new PgmNakPacket(
+            sequenceNumber,
+            _sourcePath ?? _options.DefaultSourceAddress,
+            _options.GroupAddress);
         return PgmPacket.CreateNakLike(
             new PgmHeader(
-                options.SourcePort,
-                options.DestinationPort,
+                _options.SourcePort,
+                _options.DestinationPort,
                 PgmPacketType.NegativeAcknowledgment,
                 PgmHeaderOptions.None,
                 0,
-                options.ReceiverGlobalSourceId,
+                _options.ReceiverGlobalSourceId,
                 0),
             body,
             Array.Empty<byte>());
@@ -324,7 +329,7 @@ internal sealed class ReceiveWindow
             return 0;
         }
 
-        return (long)(seconds * timeProvider.TimestampFrequency);
+        return (long)(seconds * _timeProvider.TimestampFrequency);
     }
 
     private static bool SequenceLessThan(uint left, uint right)

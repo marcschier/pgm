@@ -11,17 +11,17 @@ public sealed class PgmReceiver : IAsyncDisposable
 {
     private const int MaximumDatagramSize = 65535;
 
-    private readonly object gate = new();
-    private readonly IPgmDatagramChannel channel;
-    private readonly PgmReceiverOptions options;
-    private readonly TimeProvider timeProvider;
-    private readonly Channel<byte[]> completedApdus;
-    private readonly Dictionary<SourceKey, ReceiveWindow> windows = new();
-    private readonly CancellationTokenSource stop = new();
-    private Task? receiveTask;
-    private Task? nakTask;
-    private bool started;
-    private bool disposed;
+    private readonly object _gate = new();
+    private readonly IPgmDatagramChannel _channel;
+    private readonly PgmReceiverOptions _options;
+    private readonly TimeProvider _timeProvider;
+    private readonly Channel<byte[]> _completedApdus;
+    private readonly Dictionary<SourceKey, ReceiveWindow> _windows = new();
+    private readonly CancellationTokenSource _stop = new();
+    private Task? _receiveTask;
+    private Task? _nakTask;
+    private bool _started;
+    private bool _disposed;
 
     /// <summary>Initializes a new instance of the <see cref="PgmReceiver"/> class.</summary>
     /// <param name="channel">The datagram channel joined to the PGM multicast group.</param>
@@ -35,10 +35,10 @@ public sealed class PgmReceiver : IAsyncDisposable
         TimeProvider timeProvider,
         PgmReceiverOptions? options = null)
     {
-        this.channel = channel ?? throw new ArgumentNullException(nameof(channel));
-        this.timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
-        this.options = (options ?? new PgmReceiverOptions()).Clone();
-        completedApdus = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions
+        _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _options = (options ?? new PgmReceiverOptions()).Clone();
+        _completedApdus = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions
         {
             SingleReader = false,
             SingleWriter = false,
@@ -55,16 +55,16 @@ public sealed class PgmReceiver : IAsyncDisposable
     {
         EnsureNotDisposed();
 
-        lock (gate)
+        lock (_gate)
         {
-            if (started)
+            if (_started)
             {
                 throw new InvalidOperationException("The receiver has already been started.");
             }
 
-            started = true;
-            receiveTask = Task.Run(ReceiveLoopAsync, CancellationToken.None);
-            nakTask = Task.Run(NakLoopAsync, CancellationToken.None);
+            _started = true;
+            _receiveTask = Task.Run(ReceiveLoopAsync, CancellationToken.None);
+            _nakTask = Task.Run(NakLoopAsync, CancellationToken.None);
         }
 
         await SendPacketAsync(CreateSpmr(), cancellationToken).ConfigureAwait(false);
@@ -77,32 +77,32 @@ public sealed class PgmReceiver : IAsyncDisposable
     public async ValueTask<byte[]> ReceiveAsync(CancellationToken cancellationToken = default)
     {
         EnsureNotDisposed();
-        return await completedApdus.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+        return await _completedApdus.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        if (disposed)
+        if (_disposed)
         {
             return;
         }
 
-        disposed = true;
-        stop.Cancel();
+        _disposed = true;
+        _stop.Cancel();
         Task? localReceiveTask;
         Task? localNakTask;
 
-        lock (gate)
+        lock (_gate)
         {
-            localReceiveTask = receiveTask;
-            localNakTask = nakTask;
+            localReceiveTask = _receiveTask;
+            localNakTask = _nakTask;
         }
 
         await AwaitTaskAsync(localReceiveTask).ConfigureAwait(false);
         await AwaitTaskAsync(localNakTask).ConfigureAwait(false);
-        completedApdus.Writer.TryComplete();
-        stop.Dispose();
+        _completedApdus.Writer.TryComplete();
+        _stop.Dispose();
     }
 
     private static async ValueTask AwaitTaskAsync(Task? task)
@@ -125,13 +125,13 @@ public sealed class PgmReceiver : IAsyncDisposable
     {
         byte[] buffer = new byte[MaximumDatagramSize];
 
-        while (!stop.IsCancellationRequested)
+        while (!_stop.IsCancellationRequested)
         {
             int length;
 
             try
             {
-                length = await channel.ReceiveAsync(buffer, stop.Token).ConfigureAwait(false);
+                length = await _channel.ReceiveAsync(buffer, _stop.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -147,11 +147,11 @@ public sealed class PgmReceiver : IAsyncDisposable
 
     private async Task NakLoopAsync()
     {
-        while (!stop.IsCancellationRequested)
+        while (!_stop.IsCancellationRequested)
         {
             List<PgmPacket> naks;
 
-            lock (gate)
+            lock (_gate)
             {
                 naks = CollectDueNaks();
             }
@@ -160,7 +160,7 @@ public sealed class PgmReceiver : IAsyncDisposable
             {
                 try
                 {
-                    await SendPacketAsync(naks[index], stop.Token).ConfigureAwait(false);
+                    await SendPacketAsync(naks[index], _stop.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -168,14 +168,14 @@ public sealed class PgmReceiver : IAsyncDisposable
                 }
             }
 
-            lock (gate)
+            lock (_gate)
             {
                 DrainCompletedApdus();
             }
 
             try
             {
-                await DelayAsync(TimeSpan.FromMilliseconds(5), stop.Token).ConfigureAwait(false);
+                await DelayAsync(TimeSpan.FromMilliseconds(5), _stop.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -186,10 +186,10 @@ public sealed class PgmReceiver : IAsyncDisposable
 
     private List<PgmPacket> CollectDueNaks()
     {
-        long now = timeProvider.GetTimestamp();
+        long now = _timeProvider.GetTimestamp();
         var packets = new List<PgmPacket>();
 
-        foreach (ReceiveWindow window in windows.Values)
+        foreach (ReceiveWindow window in _windows.Values)
         {
             window.CollectDueNaks(now, packets);
         }
@@ -199,13 +199,13 @@ public sealed class PgmReceiver : IAsyncDisposable
 
     private void ProcessPacket(PgmPacket packet)
     {
-        lock (gate)
+        lock (_gate)
         {
             var key = SourceKey.FromHeader(packet.Header);
-            if (!windows.TryGetValue(key, out var window))
+            if (!_windows.TryGetValue(key, out var window))
             {
-                window = new ReceiveWindow(key, this, options, timeProvider);
-                windows.Add(key, window);
+                window = new ReceiveWindow(key, this, _options, _timeProvider);
+                _windows.Add(key, window);
             }
 
             if (window.ProcessPacket(packet))
@@ -217,11 +217,11 @@ public sealed class PgmReceiver : IAsyncDisposable
 
     private void DrainCompletedApdus()
     {
-        foreach (ReceiveWindow window in windows.Values)
+        foreach (ReceiveWindow window in _windows.Values)
         {
             while (window.TryDequeueCompletedApdu(out var apdu) && apdu is not null)
             {
-                completedApdus.Writer.TryWrite(apdu);
+                _completedApdus.Writer.TryWrite(apdu);
             }
         }
     }
@@ -230,12 +230,12 @@ public sealed class PgmReceiver : IAsyncDisposable
     {
         return PgmPacket.CreateSourcePathMessageRequest(
             new PgmHeader(
-                options.SourcePort,
-                options.DestinationPort,
+                _options.SourcePort,
+                _options.DestinationPort,
                 PgmPacketType.SourcePathMessageRequest,
                 PgmHeaderOptions.None,
                 0,
-                options.ReceiverGlobalSourceId,
+                _options.ReceiverGlobalSourceId,
                 0),
             Array.Empty<byte>());
     }
@@ -248,7 +248,7 @@ public sealed class PgmReceiver : IAsyncDisposable
             throw new InvalidOperationException("The PGM packet could not be encoded.");
         }
 
-        await channel.SendAsync(datagram, cancellationToken).ConfigureAwait(false);
+        await _channel.SendAsync(datagram, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
@@ -260,7 +260,7 @@ public sealed class PgmReceiver : IAsyncDisposable
         }
 
         var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        using (ITimer timer = timeProvider.CreateTimer(
+        using (ITimer timer = _timeProvider.CreateTimer(
             _ => completion.TrySetResult(true),
             null,
             delay,
@@ -274,9 +274,9 @@ public sealed class PgmReceiver : IAsyncDisposable
     private void EnsureNotDisposed()
     {
 #if NET8_0_OR_GREATER
-        ObjectDisposedException.ThrowIf(disposed, this);
+        ObjectDisposedException.ThrowIf(_disposed, this);
 #else
-        if (disposed)
+        if (_disposed)
         {
             throw new ObjectDisposedException(nameof(PgmReceiver));
         }

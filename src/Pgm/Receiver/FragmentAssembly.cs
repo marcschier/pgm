@@ -4,9 +4,9 @@ namespace Pgm.Receiver;
 
 internal sealed class FragmentAssembly
 {
-    private readonly byte[] data;
-    private readonly List<Range> ranges = new();
-    private int receivedLength;
+    private readonly byte[] _data;
+    private readonly List<Range> _ranges = new();
+    private int _receivedLength;
 
     public FragmentAssembly(uint length)
     {
@@ -19,14 +19,14 @@ internal sealed class FragmentAssembly
         }
 #endif
 
-        data = new byte[(int)length];
+        _data = new byte[(int)length];
     }
 
-    public bool IsComplete => receivedLength == data.Length;
+    public bool IsComplete => _receivedLength == _data.Length;
 
     public bool TryAdd(uint offset, byte[] fragment)
     {
-        if (offset > int.MaxValue || offset + (uint)fragment.Length > (uint)data.Length)
+        if (offset > int.MaxValue || offset + (uint)fragment.Length > (uint)_data.Length)
         {
             return false;
         }
@@ -34,24 +34,24 @@ internal sealed class FragmentAssembly
         int start = (int)offset;
         int end = start + fragment.Length;
 
-        for (int index = 0; index < ranges.Count; index++)
+        for (int index = 0; index < _ranges.Count; index++)
         {
-            if (start < ranges[index].End && end > ranges[index].Start)
+            if (start < _ranges[index].End && end > _ranges[index].Start)
             {
                 return false;
             }
         }
 
-        fragment.AsSpan().CopyTo(data.AsSpan(start));
-        ranges.Add(new Range(start, end));
-        receivedLength += fragment.Length;
+        fragment.AsSpan().CopyTo(_data.AsSpan(start));
+        _ranges.Add(new Range(start, end));
+        _receivedLength += fragment.Length;
         return true;
     }
 
     public byte[] ToArray()
     {
-        var copy = new byte[data.Length];
-        data.AsSpan().CopyTo(copy);
+        var copy = new byte[_data.Length];
+        _data.AsSpan().CopyTo(copy);
         return copy;
     }
 

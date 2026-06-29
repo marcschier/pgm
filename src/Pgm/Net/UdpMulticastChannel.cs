@@ -12,9 +12,9 @@ namespace Pgm.Net;
 /// <summary>Provides a UDP multicast datagram channel.</summary>
 public sealed class UdpMulticastChannel : IPgmDatagramChannel
 {
-    private readonly Socket socket;
-    private readonly EndPoint remoteEndPoint;
-    private bool disposed;
+    private readonly Socket _socket;
+    private readonly EndPoint _remoteEndPoint;
+    private bool _disposed;
 
     /// <summary>Initializes a new instance of the <see cref="UdpMulticastChannel" /> class.</summary>
     /// <param name="multicastAddress">The multicast group address to join.</param>
@@ -49,8 +49,8 @@ public sealed class UdpMulticastChannel : IPgmDatagramChannel
             throw new ArgumentOutOfRangeException(nameof(port));
         }
 
-        socket = CreateSocket(multicastAddress);
-        remoteEndPoint = new IPEndPoint(multicastAddress, port);
+        _socket = CreateSocket(multicastAddress);
+        _remoteEndPoint = new IPEndPoint(multicastAddress, port);
 
         try
         {
@@ -58,7 +58,7 @@ public sealed class UdpMulticastChannel : IPgmDatagramChannel
         }
         catch
         {
-            socket.Dispose();
+            _socket.Dispose();
             throw;
         }
     }
@@ -92,10 +92,10 @@ public sealed class UdpMulticastChannel : IPgmDatagramChannel
     /// <inheritdoc />
     public ValueTask DisposeAsync()
     {
-        if (!disposed)
+        if (!_disposed)
         {
-            disposed = true;
-            socket.Dispose();
+            _disposed = true;
+            _socket.Dispose();
         }
 
         return default;
@@ -139,9 +139,9 @@ public sealed class UdpMulticastChannel : IPgmDatagramChannel
     private void EnsureNotDisposed()
     {
 #if NET8_0_OR_GREATER
-        ObjectDisposedException.ThrowIf(disposed, this);
+        ObjectDisposedException.ThrowIf(_disposed, this);
 #else
-        if (disposed)
+        if (_disposed)
         {
             throw new ObjectDisposedException(nameof(UdpMulticastChannel));
         }
@@ -153,16 +153,16 @@ public sealed class UdpMulticastChannel : IPgmDatagramChannel
         if (multicastAddress.AddressFamily == AddressFamily.InterNetwork)
         {
             IPAddress bindAddress = localAddress ?? IPAddress.Any;
-            socket.Bind(new IPEndPoint(bindAddress, port));
-            socket.SetSocketOption(
+            _socket.Bind(new IPEndPoint(bindAddress, port));
+            _socket.SetSocketOption(
                 SocketOptionLevel.IP,
                 SocketOptionName.AddMembership,
                 new MulticastOption(multicastAddress, bindAddress));
             return;
         }
 
-        socket.Bind(new IPEndPoint(IPAddress.IPv6Any, port));
-        socket.SetSocketOption(
+        _socket.Bind(new IPEndPoint(IPAddress.IPv6Any, port));
+        _socket.SetSocketOption(
             SocketOptionLevel.IPv6,
             SocketOptionName.AddMembership,
             new IPv6MulticastOption(multicastAddress, interfaceIndex));
@@ -171,15 +171,15 @@ public sealed class UdpMulticastChannel : IPgmDatagramChannel
 #if NET8_0_OR_GREATER
     private async ValueTask SendCoreAsync(ReadOnlyMemory<byte> datagram, CancellationToken cancellationToken)
     {
-        await socket.SendToAsync(datagram, SocketFlags.None, remoteEndPoint, cancellationToken).ConfigureAwait(false);
+        await _socket.SendToAsync(datagram, SocketFlags.None, _remoteEndPoint, cancellationToken).ConfigureAwait(false);
     }
 
     private async ValueTask<int> ReceiveCoreAsync(Memory<byte> buffer, CancellationToken cancellationToken)
     {
-        EndPoint sender = socket.AddressFamily == AddressFamily.InterNetwork
+        EndPoint sender = _socket.AddressFamily == AddressFamily.InterNetwork
             ? new IPEndPoint(IPAddress.Any, 0)
             : new IPEndPoint(IPAddress.IPv6Any, 0);
-        SocketReceiveFromResult result = await socket.ReceiveFromAsync(
+        SocketReceiveFromResult result = await _socket.ReceiveFromAsync(
             buffer,
             SocketFlags.None,
             sender,
@@ -196,11 +196,11 @@ public sealed class UdpMulticastChannel : IPgmDatagramChannel
             datagram.CopyTo(rented);
             using CancellationTokenRegistration registration = cancellationToken.Register(
                 static state => ((Socket)state!).Dispose(),
-                socket);
-            await socket.SendToAsync(
+                _socket);
+            await _socket.SendToAsync(
                 new ArraySegment<byte>(rented, 0, datagram.Length),
                 SocketFlags.None,
-                remoteEndPoint).ConfigureAwait(false);
+                _remoteEndPoint).ConfigureAwait(false);
         }
         catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested)
         {
@@ -225,13 +225,13 @@ public sealed class UdpMulticastChannel : IPgmDatagramChannel
 
         try
         {
-            EndPoint sender = socket.AddressFamily == AddressFamily.InterNetwork
+            EndPoint sender = _socket.AddressFamily == AddressFamily.InterNetwork
                 ? new IPEndPoint(IPAddress.Any, 0)
                 : new IPEndPoint(IPAddress.IPv6Any, 0);
             using CancellationTokenRegistration registration = cancellationToken.Register(
                 static state => ((Socket)state!).Dispose(),
-                socket);
-            SocketReceiveFromResult result = await socket.ReceiveFromAsync(
+                _socket);
+            SocketReceiveFromResult result = await _socket.ReceiveFromAsync(
                 segment,
                 SocketFlags.None,
                 sender).ConfigureAwait(false);

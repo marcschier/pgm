@@ -5,9 +5,9 @@ namespace Pgm.Net;
 /// <summary>Provides a deterministic, process-local multicast datagram bus.</summary>
 public sealed class InMemoryMulticastBus
 {
-    private readonly object gate = new();
-    private readonly HashSet<InMemoryDatagramChannel> channels = new();
-    private readonly Random random;
+    private readonly object _gate = new();
+    private readonly HashSet<InMemoryDatagramChannel> _channels = new();
+    private readonly Random _random;
 
     /// <summary>Initializes a new instance of the <see cref="InMemoryMulticastBus" /> class.</summary>
     /// <param name="datagramLossRate">The datagram drop probability per receiver, from zero to one.</param>
@@ -27,7 +27,7 @@ public sealed class InMemoryMulticastBus
         DatagramLossRate = datagramLossRate;
         DatagramReorderRate = datagramReorderRate;
         DatagramDuplicateRate = datagramDuplicateRate;
-        random = seed.HasValue ? new Random(seed.Value) : new Random();
+        _random = seed.HasValue ? new Random(seed.Value) : new Random();
     }
 
     /// <summary>Gets the probability, from zero to one, that a datagram is dropped per receiver.</summary>
@@ -48,25 +48,25 @@ public sealed class InMemoryMulticastBus
 
     internal void Register(InMemoryDatagramChannel channel)
     {
-        lock (gate)
+        lock (_gate)
         {
-            channels.Add(channel);
+            _channels.Add(channel);
         }
     }
 
     internal void Unregister(InMemoryDatagramChannel channel)
     {
-        lock (gate)
+        lock (_gate)
         {
-            channels.Remove(channel);
+            _channels.Remove(channel);
         }
     }
 
     internal void Publish(ReadOnlyMemory<byte> datagram)
     {
-        lock (gate)
+        lock (_gate)
         {
-            foreach (InMemoryDatagramChannel channel in channels)
+            foreach (InMemoryDatagramChannel channel in _channels)
             {
                 if (ShouldDrop())
                 {
@@ -98,16 +98,16 @@ public sealed class InMemoryMulticastBus
 
     private bool ShouldDrop()
     {
-        return DatagramLossRate > 0 && random.NextDouble() < DatagramLossRate;
+        return DatagramLossRate > 0 && _random.NextDouble() < DatagramLossRate;
     }
 
     private bool ShouldReorder()
     {
-        return DatagramReorderRate > 0 && random.NextDouble() < DatagramReorderRate;
+        return DatagramReorderRate > 0 && _random.NextDouble() < DatagramReorderRate;
     }
 
     private bool ShouldDuplicate()
     {
-        return DatagramDuplicateRate > 0 && random.NextDouble() < DatagramDuplicateRate;
+        return DatagramDuplicateRate > 0 && _random.NextDouble() < DatagramDuplicateRate;
     }
 }
