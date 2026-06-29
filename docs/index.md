@@ -14,6 +14,7 @@ same on Windows, Linux and macOS, on `netstandard2.0` through `net10.0`.
 - [Architecture](architecture.md) — sender, receiver, FEC and congestion internals.
 - [Wire format](wire-format.md) — PGM-over-UDP packets and options.
 - [API reference](api.md) — `PgmPublisher`, `PgmSubscriber`, and options.
+- [Benchmarks](benchmarks.md) — codec, checksum, and FEC results.
 
 ## At a glance
 
