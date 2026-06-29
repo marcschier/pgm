@@ -30,7 +30,7 @@ dotnet test Pgm.slnx -c Release
 
 ## Samples
 
-- [`samples/Pgm.Samples`](samples/README.md) — 🚀 publisher + two subscribers over the in-memory bus; runs anywhere, no real multicast.
+- [In memory Publish/Subscriber](samples/README.md) — 🚀 publisher + two subscribers over the in-memory bus; runs anywhere, no real multicast.
 
 ## License
 
