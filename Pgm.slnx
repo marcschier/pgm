@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/solution/">
+    <File Path=".editorconfig" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="version.json" />
+    <File Path="global.json" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Pgm/Pgm.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Pgm.Tests/Pgm.Tests.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Pgm.Samples/Pgm.Samples.csproj" />
+  </Folder>
+</Solution>
