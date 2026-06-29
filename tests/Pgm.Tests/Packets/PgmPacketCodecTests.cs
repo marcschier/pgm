@@ -14,11 +14,14 @@ public sealed class PgmPacketCodecTests
             new PgmSourcePathMessage(1, 2, 3, Ipv4(192, 0, 2, 1)),
             Array.Empty<byte>());
         var parsed = RoundTrip(packet);
-        var body = (PgmSourcePathMessage)parsed.Body;
+        _ = parsed.TryGetSourcePathMessage(out var body);
+        var type = parsed.Header.Type;
+        var addressBytes = body.Path.GetAddressBytes();
+        var leadingEdge = body.LeadingEdgeSequenceNumber;
 
-        await Assert.That(parsed.Header.Type).IsEqualTo(PgmPacketType.SourcePathMessage);
-        await Assert.That(body.Path.GetAddressBytes()).IsEquivalentTo(new byte[] { 192, 0, 2, 1 });
-        await Assert.That(body.LeadingEdgeSequenceNumber).IsEqualTo(3U);
+        await Assert.That(type).IsEqualTo(PgmPacketType.SourcePathMessage);
+        await Assert.That(addressBytes).IsEquivalentTo(new byte[] { 192, 0, 2, 1 });
+        await Assert.That(leadingEdge).IsEqualTo(3U);
     }
 
     [Test]
@@ -35,11 +38,14 @@ public sealed class PgmPacketCodecTests
             PgmHeaderOptions.OptionsPresent | PgmHeaderOptions.Parity);
         var packet = PgmPacket.CreateData(header, new PgmDataPacket(11, 7, data), options);
         var parsed = RoundTrip(packet);
-        var body = (PgmDataPacket)parsed.Body;
+        _ = parsed.TryGetData(out var body);
+        var type = parsed.Header.Type;
+        var optionBytes = parsed.GetOptionBytes();
+        var dataBytes = body.GetDataBytes();
 
-        await Assert.That(parsed.Header.Type).IsEqualTo(PgmPacketType.OriginalData);
-        await Assert.That(parsed.GetOptionBytes()).IsEquivalentTo(options);
-        await Assert.That(body.GetDataBytes()).IsEquivalentTo(data);
+        await Assert.That(type).IsEqualTo(PgmPacketType.OriginalData);
+        await Assert.That(optionBytes).IsEquivalentTo(options);
+        await Assert.That(dataBytes).IsEquivalentTo(data);
     }
 
     [Test]
@@ -59,11 +65,14 @@ public sealed class PgmPacketCodecTests
                 Ipv4(203, 0, 113, 1),
                 Ipv4(239, 192, 0, 1)), Array.Empty<byte>());
             var parsed = RoundTrip(packet);
-            var body = (PgmNakPacket)parsed.Body;
+            _ = parsed.TryGetNak(out var body);
+            var parsedType = parsed.Header.Type;
+            var sequence = body.SequenceNumber;
+            var groupBytes = body.Group.GetAddressBytes();
 
-            await Assert.That(parsed.Header.Type).IsEqualTo(type);
-            await Assert.That(body.SequenceNumber).IsEqualTo(99U);
-            await Assert.That(body.Group.GetAddressBytes()).IsEquivalentTo(new byte[] { 239, 192, 0, 1 });
+            await Assert.That(parsedType).IsEqualTo(type);
+            await Assert.That(sequence).IsEqualTo(99U);
+            await Assert.That(groupBytes).IsEquivalentTo(new byte[] { 239, 192, 0, 1 });
         }
     }
 
@@ -83,8 +92,12 @@ public sealed class PgmPacketCodecTests
             new PgmPollResponsePacket(123, 2),
             Array.Empty<byte>());
 
-        await Assert.That(((PgmPollPacket)RoundTrip(poll).Body).BackoffInterval).IsEqualTo(250_000U);
-        await Assert.That(((PgmPollResponsePacket)RoundTrip(polr).Body).Round).IsEqualTo((ushort)2);
+        RoundTrip(poll).TryGetPoll(out var pollBody);
+        RoundTrip(polr).TryGetPollResponse(out var polrBody);
+        var backoff = pollBody.BackoffInterval;
+        var round = polrBody.Round;
+        await Assert.That(backoff).IsEqualTo(250_000U);
+        await Assert.That(round).IsEqualTo((ushort)2);
     }
 
     [Test]
@@ -94,9 +107,11 @@ public sealed class PgmPacketCodecTests
             Header(PgmPacketType.SourcePathMessageRequest, 0),
             Array.Empty<byte>());
         var parsed = RoundTrip(packet);
+        var spmrType = parsed.Header.Type;
+        var kind = parsed.Kind;
 
-        await Assert.That(parsed.Header.Type).IsEqualTo(PgmPacketType.SourcePathMessageRequest);
-        await Assert.That(parsed.Body).IsTypeOf<PgmSourcePathMessageRequest>();
+        await Assert.That(spmrType).IsEqualTo(PgmPacketType.SourcePathMessageRequest);
+        await Assert.That(kind).IsEqualTo(PgmBodyKind.SourcePathMessageRequest);
     }
 
     [Test]
@@ -127,9 +142,10 @@ public sealed class PgmPacketCodecTests
 
         _ = PgmUdpEncapsulation.TryWritePayload(packet, buffer);
         var parsed = PgmUdpEncapsulation.TryParsePayload(buffer, out var udpPacket);
+        var udpType = udpPacket.Header.Type;
 
         await Assert.That(parsed).IsTrue();
-        await Assert.That(udpPacket?.Header.Type).IsEqualTo(PgmPacketType.RepairData);
+        await Assert.That(udpType).IsEqualTo(PgmPacketType.RepairData);
         var defaultPort = PgmUdpEncapsulation.DefaultPort;
         await Assert.That(defaultPort).IsEqualTo(3055);
     }
@@ -158,12 +174,40 @@ public sealed class PgmPacketCodecTests
         await Assert.That(PgmChecksum.Compute(bytes)).IsEqualTo((ushort)0x1905);
     }
 
+    [Test]
+    public async Task PgmPacket_Checksum_MatchesNaiveScalarReferenceForEvenLengths()
+    {
+        var random = new Random(12345);
+
+        for (var length = 0; length <= 4096; length += 2)
+        {
+            var bytes = new byte[length];
+            random.NextBytes(bytes);
+
+            await Assert.That(PgmChecksum.Compute(bytes)).IsEqualTo(ComputeChecksumScalarReference(bytes));
+        }
+    }
+
+    [Test]
+    public async Task PgmPacket_Checksum_MatchesNaiveScalarReferenceForOddLengths()
+    {
+        var random = new Random(54321);
+
+        for (var length = 1; length <= 4095; length += 2)
+        {
+            var bytes = new byte[length];
+            random.NextBytes(bytes);
+
+            await Assert.That(PgmChecksum.Compute(bytes)).IsEqualTo(ComputeChecksumScalarReference(bytes));
+        }
+    }
+
     private static PgmPacket RoundTrip(PgmPacket packet)
     {
         var buffer = new byte[packet.EncodedLength];
         _ = packet.TryWrite(buffer);
         _ = PgmPacket.TryParse(buffer, out var parsed);
-        return parsed ?? throw new InvalidOperationException("Packet did not parse.");
+        return parsed;
     }
 
     private static PgmHeader Header(
@@ -177,5 +221,29 @@ public sealed class PgmPacketCodecTests
     private static PgmNetworkAddress Ipv4(byte a, byte b, byte c, byte d)
     {
         return new PgmNetworkAddress(PgmAddressFamily.IPv4, new[] { a, b, c, d });
+    }
+
+    private static ushort ComputeChecksumScalarReference(ReadOnlySpan<byte> packet)
+    {
+        ulong sum = 0;
+        var offset = 0;
+        while (offset + 1 < packet.Length)
+        {
+            sum += (uint)((packet[offset] << 8) | packet[offset + 1]);
+            offset += 2;
+        }
+
+        if (offset < packet.Length)
+        {
+            sum += (uint)(packet[offset] << 8);
+        }
+
+        while ((sum >> 16) != 0)
+        {
+            sum = (sum & 0xFFFF) + (sum >> 16);
+        }
+
+        var checksum = (ushort)~sum;
+        return checksum == 0 ? ushort.MaxValue : checksum;
     }
 }

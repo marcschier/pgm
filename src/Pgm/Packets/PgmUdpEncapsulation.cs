@@ -12,17 +12,8 @@ public static class PgmUdpEncapsulation
     /// <param name="packet">The PGM packet.</param>
     /// <param name="destination">The UDP payload destination span.</param>
     /// <returns><see langword="true"/> when the packet was written.</returns>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage(
-        "Style",
-        "CA1510:Use ArgumentNullException throw helper",
-        Justification = "The helper is not available on every target framework.")]
     public static bool TryWritePayload(PgmPacket packet, Span<byte> destination)
     {
-        if (packet is null)
-        {
-            throw new ArgumentNullException(nameof(packet));
-        }
-
         return packet.TryWrite(destination);
     }
 
@@ -30,7 +21,7 @@ public static class PgmUdpEncapsulation
     /// <param name="payload">The UDP payload.</param>
     /// <param name="packet">The parsed packet.</param>
     /// <returns><see langword="true"/> when parsing succeeded.</returns>
-    public static bool TryParsePayload(ReadOnlySpan<byte> payload, out PgmPacket? packet)
+    public static bool TryParsePayload(ReadOnlySpan<byte> payload, out PgmPacket packet)
     {
         return PgmPacket.TryParse(payload, out packet);
     }

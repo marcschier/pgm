@@ -5,9 +5,9 @@ using System.Buffers.Binary;
 namespace Pgm.Packets;
 
 /// <summary>Represents a POLL body.</summary>
-public sealed class PgmPollPacket
+public readonly struct PgmPollPacket
 {
-    /// <summary>Initializes a new instance of the <see cref="PgmPollPacket"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="PgmPollPacket"/> struct.</summary>
     /// <param name="sequenceNumber">The poll sequence number.</param>
     /// <param name="round">The poll round.</param>
     /// <param name="subType">The poll subtype.</param>
@@ -27,7 +27,7 @@ public sealed class PgmPollPacket
         SequenceNumber = sequenceNumber;
         Round = round;
         SubType = subType;
-        Path = path ?? throw new ArgumentNullException(nameof(path));
+        Path = path;
         BackoffInterval = backoffInterval;
         RandomString = randomString;
         Mask = mask;
@@ -87,12 +87,11 @@ public sealed class PgmPollPacket
     /// <param name="body">The parsed body.</param>
     /// <param name="bytesRead">The number of bytes consumed.</param>
     /// <returns><see langword="true"/> when parsing succeeded.</returns>
-    public static bool TryParseBody(ReadOnlySpan<byte> source, out PgmPollPacket? body, out int bytesRead)
+    public static bool TryParseBody(ReadOnlySpan<byte> source, out PgmPollPacket body, out int bytesRead)
     {
-        if (source.Length < 24 || !PgmNetworkAddress.TryParse(source.Slice(8), out var path, out var pathLength)
-            || path is null)
+        if (source.Length < 24 || !PgmNetworkAddress.TryParse(source.Slice(8), out var path, out var pathLength))
         {
-            body = null;
+            body = default;
             bytesRead = 0;
             return false;
         }
@@ -100,7 +99,7 @@ public sealed class PgmPollPacket
         var offset = 8 + pathLength;
         if (source.Length < offset + 12)
         {
-            body = null;
+            body = default;
             bytesRead = 0;
             return false;
         }
@@ -119,9 +118,9 @@ public sealed class PgmPollPacket
 }
 
 /// <summary>Represents a POLR body.</summary>
-public sealed class PgmPollResponsePacket
+public readonly struct PgmPollResponsePacket
 {
-    /// <summary>Initializes a new instance of the <see cref="PgmPollResponsePacket"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="PgmPollResponsePacket"/> struct.</summary>
     /// <param name="sequenceNumber">The poll sequence number.</param>
     /// <param name="round">The poll round.</param>
     public PgmPollResponsePacket(uint sequenceNumber, ushort round)
@@ -164,11 +163,11 @@ public sealed class PgmPollResponsePacket
     /// <param name="body">The parsed body.</param>
     /// <param name="bytesRead">The number of bytes consumed.</param>
     /// <returns><see langword="true"/> when parsing succeeded.</returns>
-    public static bool TryParseBody(ReadOnlySpan<byte> source, out PgmPollResponsePacket? body, out int bytesRead)
+    public static bool TryParseBody(ReadOnlySpan<byte> source, out PgmPollResponsePacket body, out int bytesRead)
     {
         if (source.Length < 8)
         {
-            body = null;
+            body = default;
             bytesRead = 0;
             return false;
         }

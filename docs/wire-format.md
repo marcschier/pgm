@@ -16,17 +16,21 @@ Bodies implemented: **SPM** (window edges + path), **ODATA/RDATA** (sequence + f
 (requested sequence + source/group), **SPMR**, and **POLL/POLR** for congestion. Option extensions cover total length,
 fragment, NAK list, FEC group, and parity group.
 
-All codecs are `TryParse`/`TryWrite` over `Span<byte>` and reject truncated input. To inspect a datagram:
+All codecs are `TryParse`/`TryWrite` over `Span<byte>` and reject truncated input. The model is allocation-free:
+`PgmPacket` is a `readonly ref struct` view (no boxed body), `PgmHeader`/NLA/GSI/SPM/NAK/POLL are `readonly struct`s,
+and ODATA payload is exposed as a `ReadOnlySpan<byte>`. Dispatch on the body via `Kind`/`TryGet*`:
 
 ```csharp
 using Pgm.Packets;
 
 if (PgmUdpEncapsulation.TryParsePayload(datagram, out var packet) &&
-    packet!.Header.Type == PgmPacketType.OriginalData)
+    packet.Header.Type == PgmPacketType.OriginalData &&
+    packet.TryGetData(out var data))
 {
-    var data = (PgmDataPacket)packet.Body;
-    Console.WriteLine($"seq {data.SequenceNumber}, {data.GetDataBytes().Length} bytes");
+    Console.WriteLine($"seq {data.SequenceNumber}, {data.Data.Length} bytes");
 }
 ```
 
-The 16-bit checksum is verifiable directly: `PgmChecksum.Compute(bytes)`.
+The 16-bit checksum is verifiable directly: `PgmChecksum.Compute(bytes)` (SIMD-accelerated on net8+, scalar fallback on
+netstandard). Encode/decode reuse `ArrayPool` buffers so steady-state publish and receive are zero-allocation, and
+Reed-Solomon multiply-add is vectorized on net8+.

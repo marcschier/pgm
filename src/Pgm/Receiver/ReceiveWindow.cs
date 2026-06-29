@@ -33,20 +33,20 @@ internal sealed class ReceiveWindow
 
     public bool ProcessPacket(PgmPacket packet)
     {
-        if (packet.Body is PgmSourcePathMessage spm)
+        if (packet.TryGetSourcePathMessage(out var spm))
         {
             ProcessSpm(spm);
             return true;
         }
 
-        if (packet.Body is PgmNakPacket nak && packet.Header.Type == PgmPacketType.NakConfirmation)
+        if (packet.Header.Type == PgmPacketType.NakConfirmation && packet.TryGetNak(out var nak))
         {
             ProcessNakConfirmation(nak);
             return false;
         }
 
-        if (packet.Body is PgmDataPacket data
-            && (packet.Header.Type == PgmPacketType.OriginalData || packet.Header.Type == PgmPacketType.RepairData))
+        if ((packet.Header.Type == PgmPacketType.OriginalData || packet.Header.Type == PgmPacketType.RepairData)
+            && packet.TryGetData(out var data))
         {
             return ProcessData(packet, data);
         }
@@ -54,7 +54,7 @@ internal sealed class ReceiveWindow
         return false;
     }
 
-    public void CollectDueNaks(long now, List<PgmPacket> packetsToSend)
+    public void CollectDueNaks(long now, List<byte[]> datagramsToSend)
     {
         var lost = new List<uint>();
 
@@ -77,7 +77,7 @@ internal sealed class ReceiveWindow
                 continue;
             }
 
-            packetsToSend.Add(CreateNak(nak.SequenceNumber));
+            datagramsToSend.Add(CreateNak(nak.SequenceNumber));
             nak.MarkSent(now, _options.InitialNakBackoff, _options.MaximumNakBackoff,
                 TimestampFromTimeSpan(_options.NakConfirmationTimeout));
         }
@@ -302,13 +302,13 @@ internal sealed class ReceiveWindow
         }
     }
 
-    private PgmPacket CreateNak(uint sequenceNumber)
+    private byte[] CreateNak(uint sequenceNumber)
     {
         var body = new PgmNakPacket(
             sequenceNumber,
             _sourcePath ?? _options.DefaultSourceAddress,
             _options.GroupAddress);
-        return PgmPacket.CreateNakLike(
+        PgmPacket packet = PgmPacket.CreateNakLike(
             new PgmHeader(
                 _options.SourcePort,
                 _options.DestinationPort,
@@ -318,7 +318,10 @@ internal sealed class ReceiveWindow
                 _options.ReceiverGlobalSourceId,
                 0),
             body,
-            Array.Empty<byte>());
+            ReadOnlySpan<byte>.Empty);
+        var datagram = new byte[packet.EncodedLength];
+        _ = packet.TryWrite(datagram);
+        return datagram;
     }
 
     private long TimestampFromTimeSpan(TimeSpan value)

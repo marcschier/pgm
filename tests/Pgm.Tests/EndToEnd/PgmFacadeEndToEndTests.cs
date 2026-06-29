@@ -167,8 +167,8 @@ public sealed class EndToEndPgmFacadeTests
         {
             if (!channel.DropOriginalData
                 || !PgmUdpEncapsulation.TryParsePayload(datagram, out var packet)
-                || packet?.Header.Type != PgmPacketType.OriginalData
-                || packet.Body is not PgmDataPacket data)
+                || packet.Header.Type != PgmPacketType.OriginalData
+                || !packet.TryGetData(out var data))
             {
                 return false;
             }
@@ -181,8 +181,8 @@ public sealed class EndToEndPgmFacadeTests
             sourceNak = null;
 
             if (!PgmUdpEncapsulation.TryParsePayload(datagram, out var packet)
-                || packet?.Header.Type != PgmPacketType.NegativeAcknowledgment
-                || packet.Body is not PgmNakPacket nak)
+                || packet.Header.Type != PgmPacketType.NegativeAcknowledgment
+                || !packet.TryGetNak(out var nak))
             {
                 return false;
             }
@@ -197,7 +197,7 @@ public sealed class EndToEndPgmFacadeTests
                     packet.Header.GlobalSourceId,
                     0),
                 nak,
-                Array.Empty<byte>());
+                ReadOnlySpan<byte>.Empty);
             sourceNak = new byte[sourcePacket.EncodedLength];
             _ = PgmUdpEncapsulation.TryWritePayload(sourcePacket, sourceNak);
             return true;

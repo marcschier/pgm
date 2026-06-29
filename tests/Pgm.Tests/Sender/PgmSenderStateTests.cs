@@ -19,20 +19,27 @@ public sealed class PgmSenderStateTests
         await sender.StartAsync();
         await sender.SendAsync(new byte[] { 1, 2, 3, 4, 5 });
 
-        PgmPacket first = await ReceivePacketAsync(receiver, PgmPacketType.OriginalData);
-        PgmPacket second = await ReceivePacketAsync(receiver, PgmPacketType.OriginalData);
-        var firstData = (PgmDataPacket)first.Body;
-        var secondData = (PgmDataPacket)second.Body;
-
-        await Assert.That(firstData.SequenceNumber).IsEqualTo(1U);
-        await Assert.That(firstData.GetDataBytes()).IsEquivalentTo(new byte[] { 1, 2, 3 });
-        await Assert.That(secondData.SequenceNumber).IsEqualTo(2U);
-        await Assert.That(secondData.GetDataBytes()).IsEquivalentTo(new byte[] { 4, 5 });
-        await Assert.That(PgmOptionCodec.TryReadFragment(
+        byte[] firstDatagram = await ReceivePacketAsync(receiver, PgmPacketType.OriginalData);
+        byte[] secondDatagram = await ReceivePacketAsync(receiver, PgmPacketType.OriginalData);
+        _ = PgmPacket.TryParse(firstDatagram, out var first);
+        _ = PgmPacket.TryParse(secondDatagram, out var second);
+        _ = first.TryGetData(out var firstData);
+        _ = second.TryGetData(out var secondData);
+        uint firstSeq = firstData.SequenceNumber;
+        byte[] firstBytes = firstData.GetDataBytes();
+        uint secondSeq = secondData.SequenceNumber;
+        byte[] secondBytes = secondData.GetDataBytes();
+        bool fragmentRead = PgmOptionCodec.TryReadFragment(
             first.GetOptionBytes().AsSpan(4),
             out uint firstSequenceNumber,
             out uint offset,
-            out uint length)).IsTrue();
+            out uint length);
+
+        await Assert.That(firstSeq).IsEqualTo(1U);
+        await Assert.That(firstBytes).IsEquivalentTo(new byte[] { 1, 2, 3 });
+        await Assert.That(secondSeq).IsEqualTo(2U);
+        await Assert.That(secondBytes).IsEquivalentTo(new byte[] { 4, 5 });
+        await Assert.That(fragmentRead).IsTrue();
         await Assert.That(firstSequenceNumber).IsEqualTo(1U);
         await Assert.That(offset).IsEqualTo(0U);
         await Assert.That(length).IsEqualTo(5U);
@@ -54,11 +61,13 @@ public sealed class PgmSenderStateTests
 
         timeProvider.FireTimers();
 
-        PgmPacket heartbeat = await ReceivePacketAsync(receiver, PgmPacketType.SourcePathMessage);
-        var body = (PgmSourcePathMessage)heartbeat.Body;
+        _ = PgmPacket.TryParse(await ReceivePacketAsync(receiver, PgmPacketType.SourcePathMessage), out var heartbeat);
+        _ = heartbeat.TryGetSourcePathMessage(out var body);
+        uint trailingEdge = body.TrailingEdgeSequenceNumber;
+        uint leadingEdge = body.LeadingEdgeSequenceNumber;
 
-        await Assert.That(body.TrailingEdgeSequenceNumber).IsEqualTo(1U);
-        await Assert.That(body.LeadingEdgeSequenceNumber).IsEqualTo(1U);
+        await Assert.That(trailingEdge).IsEqualTo(1U);
+        await Assert.That(leadingEdge).IsEqualTo(1U);
     }
 
     [Test]
@@ -72,19 +81,26 @@ public sealed class PgmSenderStateTests
 
         await sender.StartAsync();
         await sender.SendAsync(new byte[] { 7, 8, 9 });
-        PgmPacket odata = await ReceivePacketAsync(receiver, PgmPacketType.OriginalData);
-        uint sequenceNumber = ((PgmDataPacket)odata.Body).SequenceNumber;
+        byte[] odataDatagram = await ReceivePacketAsync(receiver, PgmPacketType.OriginalData);
+        _ = PgmPacket.TryParse(odataDatagram, out var odata);
+        _ = odata.TryGetData(out var odataBody);
+        uint sequenceNumber = odataBody.SequenceNumber;
 
-        await receiver.SendAsync(Encode(CreateNak(options, sequenceNumber)));
+        await receiver.SendAsync(CreateNak(options, sequenceNumber));
 
-        PgmPacket ncf = await ReceivePacketAsync(receiver, PgmPacketType.NakConfirmation);
-        PgmPacket repair = await ReceivePacketAsync(receiver, PgmPacketType.RepairData);
-        var ncfBody = (PgmNakPacket)ncf.Body;
-        var repairBody = (PgmDataPacket)repair.Body;
+        byte[] ncfDatagram = await ReceivePacketAsync(receiver, PgmPacketType.NakConfirmation);
+        byte[] repairDatagram = await ReceivePacketAsync(receiver, PgmPacketType.RepairData);
+        _ = PgmPacket.TryParse(ncfDatagram, out var ncf);
+        _ = PgmPacket.TryParse(repairDatagram, out var repair);
+        _ = ncf.TryGetNak(out var ncfBody);
+        _ = repair.TryGetData(out var repairBody);
+        uint ncfSeq = ncfBody.SequenceNumber;
+        uint repairSeq = repairBody.SequenceNumber;
+        byte[] repairBytes = repairBody.GetDataBytes();
 
-        await Assert.That(ncfBody.SequenceNumber).IsEqualTo(sequenceNumber);
-        await Assert.That(repairBody.SequenceNumber).IsEqualTo(sequenceNumber);
-        await Assert.That(repairBody.GetDataBytes()).IsEquivalentTo(new byte[] { 7, 8, 9 });
+        await Assert.That(ncfSeq).IsEqualTo(sequenceNumber);
+        await Assert.That(repairSeq).IsEqualTo(sequenceNumber);
+        await Assert.That(repairBytes).IsEquivalentTo(new byte[] { 7, 8, 9 });
     }
 
     [Test]
@@ -101,11 +117,13 @@ public sealed class PgmSenderStateTests
 
         _ = await ReceivePacketAsync(receiver, PgmPacketType.OriginalData, requireParity: false);
         _ = await ReceivePacketAsync(receiver, PgmPacketType.OriginalData, requireParity: false);
-        PgmPacket parity = await ReceivePacketAsync(receiver, PgmPacketType.OriginalData, requireParity: true);
+        _ = PgmPacket.TryParse(
+            await ReceivePacketAsync(receiver, PgmPacketType.OriginalData, requireParity: true), out var parity);
 
         byte[] options = parity.GetOptionBytes();
+        bool isParity = (parity.Header.Options & PgmHeaderOptions.Parity) != 0;
 
-        await Assert.That((parity.Header.Options & PgmHeaderOptions.Parity) != 0).IsTrue();
+        await Assert.That(isParity).IsTrue();
         await Assert.That(PgmOptionCodec.TryReadFec(options.AsSpan(4), out uint size, out bool proactive, out _))
             .IsTrue();
         await Assert.That(PgmOptionCodec.TryReadParityGroup(options.AsSpan(12), out uint groupNumber)).IsTrue();
@@ -125,7 +143,7 @@ public sealed class PgmSenderStateTests
         };
     }
 
-    private static PgmPacket CreateNak(PgmSenderOptions options, uint sequenceNumber)
+    private static byte[] CreateNak(PgmSenderOptions options, uint sequenceNumber)
     {
         PgmHeader header = new PgmHeader(
             options.SourcePort,
@@ -136,17 +154,13 @@ public sealed class PgmSenderStateTests
             options.GlobalSourceId,
             0);
         PgmNakPacket body = new PgmNakPacket(sequenceNumber, options.SourceAddress, options.GroupAddress);
-        return PgmPacket.CreateNakLike(header, body, Array.Empty<byte>());
-    }
-
-    private static byte[] Encode(PgmPacket packet)
-    {
+        PgmPacket packet = PgmPacket.CreateNakLike(header, body, ReadOnlySpan<byte>.Empty);
         byte[] datagram = new byte[packet.EncodedLength];
-        _ = PgmUdpEncapsulation.TryWritePayload(packet, datagram);
+        _ = packet.TryWrite(datagram);
         return datagram;
     }
 
-    private static async Task<PgmPacket> ReceivePacketAsync(
+    private static async Task<byte[]> ReceivePacketAsync(
         InMemoryDatagramChannel channel,
         PgmPacketType type,
         bool? requireParity = null)
@@ -157,7 +171,7 @@ public sealed class PgmSenderStateTests
         while (true)
         {
             int byteCount = await channel.ReceiveAsync(buffer, cancellation.Token);
-            if (!PgmUdpEncapsulation.TryParsePayload(buffer.AsSpan(0, byteCount), out var packet) || packet is null)
+            if (!PgmUdpEncapsulation.TryParsePayload(buffer.AsSpan(0, byteCount), out var packet))
             {
                 continue;
             }
@@ -173,7 +187,7 @@ public sealed class PgmSenderStateTests
                 continue;
             }
 
-            return packet;
+            return buffer.AsSpan(0, byteCount).ToArray();
         }
     }
 

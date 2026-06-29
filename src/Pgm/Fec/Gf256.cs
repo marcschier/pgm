@@ -1,5 +1,12 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+#if NET8_0_OR_GREATER
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
+#endif
+
 namespace Pgm.Fec;
 
 /// <summary>Arithmetic over GF(2^8) using the RFC 3208 Reed-Solomon field polynomial.</summary>
@@ -114,6 +121,38 @@ public static class Gf256
             return;
         }
 
+        if (source.Length < destination.Length)
+        {
+            MultiplyAddScalar(source, destination, coefficient);
+            return;
+        }
+
+#if NET8_0_OR_GREATER
+        if (Ssse3.IsSupported && !source.Overlaps(destination))
+        {
+            if (coefficient == 1)
+            {
+                XorVectorized(source, destination);
+            }
+            else
+            {
+                MultiplyAddVectorized(source, destination, coefficient);
+            }
+
+            return;
+        }
+#endif
+
+        MultiplyAddScalar(source, destination, coefficient);
+    }
+
+    internal static void MultiplyAddScalar(ReadOnlySpan<byte> source, Span<byte> destination, byte coefficient)
+    {
+        if (coefficient == 0)
+        {
+            return;
+        }
+
         if (coefficient == 1)
         {
             for (int index = 0; index < destination.Length; index++)
@@ -129,6 +168,104 @@ public static class Gf256
             destination[index] ^= Multiply(source[index], coefficient);
         }
     }
+
+#if NET8_0_OR_GREATER
+    private static void XorVectorized(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+        int index = 0;
+        ref readonly byte sourceRef = ref MemoryMarshal.GetReference(source);
+        ref byte destinationRef = ref MemoryMarshal.GetReference(destination);
+
+        if (Avx2.IsSupported)
+        {
+            for (; index <= destination.Length - Vector256<byte>.Count; index += Vector256<byte>.Count)
+            {
+                Vector256<byte> sourceVector = Vector256.LoadUnsafe(in sourceRef, (nuint)index);
+                Vector256<byte> destinationVector = Vector256.LoadUnsafe(ref destinationRef, (nuint)index);
+                Avx2.Xor(sourceVector, destinationVector).StoreUnsafe(ref destinationRef, (nuint)index);
+            }
+        }
+
+        for (; index <= destination.Length - Vector128<byte>.Count; index += Vector128<byte>.Count)
+        {
+            Vector128<byte> sourceVector = Vector128.LoadUnsafe(in sourceRef, (nuint)index);
+            Vector128<byte> destinationVector = Vector128.LoadUnsafe(ref destinationRef, (nuint)index);
+            Sse2.Xor(sourceVector, destinationVector).StoreUnsafe(ref destinationRef, (nuint)index);
+        }
+
+        for (; index < destination.Length; index++)
+        {
+            destination[index] ^= source[index];
+        }
+    }
+
+    private static void MultiplyAddVectorized(ReadOnlySpan<byte> source, Span<byte> destination, byte coefficient)
+    {
+        Span<byte> shuffleTables = stackalloc byte[64];
+
+        for (int nibble = 0; nibble < 16; nibble++)
+        {
+            byte low = Multiply((byte)nibble, coefficient);
+            byte high = Multiply((byte)(nibble << 4), coefficient);
+
+            shuffleTables[nibble] = low;
+            shuffleTables[16 + nibble] = low;
+            shuffleTables[32 + nibble] = high;
+            shuffleTables[48 + nibble] = high;
+        }
+
+        int index = 0;
+        ref byte tableRef = ref MemoryMarshal.GetReference(shuffleTables);
+        ref readonly byte sourceRef = ref MemoryMarshal.GetReference(source);
+        ref byte destinationRef = ref MemoryMarshal.GetReference(destination);
+
+        if (Avx2.IsSupported)
+        {
+            Vector256<byte> lowTable = Vector256.LoadUnsafe(ref tableRef);
+            Vector256<byte> highTable = Vector256.LoadUnsafe(ref Unsafe.Add(ref tableRef, 32));
+            Vector256<byte> lowMask = Vector256.Create((byte)0x0f);
+
+            for (; index <= destination.Length - Vector256<byte>.Count; index += Vector256<byte>.Count)
+            {
+                Vector256<byte> sourceVector = Vector256.LoadUnsafe(in sourceRef, (nuint)index);
+                Vector256<byte> lowNibbles = Avx2.And(sourceVector, lowMask);
+                Vector256<byte> highNibbles = Avx2.And(
+                    Avx2.ShiftRightLogical(sourceVector.AsUInt16(), 4).AsByte(),
+                    lowMask);
+                Vector256<byte> product = Avx2.Xor(
+                    Avx2.Shuffle(lowTable, lowNibbles),
+                    Avx2.Shuffle(highTable, highNibbles));
+                Vector256<byte> destinationVector = Vector256.LoadUnsafe(ref destinationRef, (nuint)index);
+
+                Avx2.Xor(destinationVector, product).StoreUnsafe(ref destinationRef, (nuint)index);
+            }
+        }
+
+        Vector128<byte> lowTable128 = Vector128.LoadUnsafe(ref tableRef);
+        Vector128<byte> highTable128 = Vector128.LoadUnsafe(ref Unsafe.Add(ref tableRef, 32));
+        Vector128<byte> lowMask128 = Vector128.Create((byte)0x0f);
+
+        for (; index <= destination.Length - Vector128<byte>.Count; index += Vector128<byte>.Count)
+        {
+            Vector128<byte> sourceVector = Vector128.LoadUnsafe(in sourceRef, (nuint)index);
+            Vector128<byte> lowNibbles = Sse2.And(sourceVector, lowMask128);
+            Vector128<byte> highNibbles = Sse2.And(
+                Sse2.ShiftRightLogical(sourceVector.AsUInt16(), 4).AsByte(),
+                lowMask128);
+            Vector128<byte> product = Sse2.Xor(
+                Ssse3.Shuffle(lowTable128, lowNibbles),
+                Ssse3.Shuffle(highTable128, highNibbles));
+            Vector128<byte> destinationVector = Vector128.LoadUnsafe(ref destinationRef, (nuint)index);
+
+            Sse2.Xor(destinationVector, product).StoreUnsafe(ref destinationRef, (nuint)index);
+        }
+
+        for (; index < destination.Length; index++)
+        {
+            destination[index] ^= Multiply(source[index], coefficient);
+        }
+    }
+#endif
 
     private static byte[] CreateExpTable()
     {

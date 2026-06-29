@@ -5,9 +5,9 @@ using System.Buffers.Binary;
 namespace Pgm.Packets;
 
 /// <summary>Represents an RFC 3208 Source Path Message body.</summary>
-public sealed class PgmSourcePathMessage
+public readonly struct PgmSourcePathMessage
 {
-    /// <summary>Initializes a new instance of the <see cref="PgmSourcePathMessage"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="PgmSourcePathMessage"/> struct.</summary>
     /// <param name="sequenceNumber">The SPM sequence number.</param>
     /// <param name="trailingEdgeSequenceNumber">The trailing edge sequence number.</param>
     /// <param name="leadingEdgeSequenceNumber">The leading edge sequence number.</param>
@@ -21,7 +21,7 @@ public sealed class PgmSourcePathMessage
         SequenceNumber = sequenceNumber;
         TrailingEdgeSequenceNumber = trailingEdgeSequenceNumber;
         LeadingEdgeSequenceNumber = leadingEdgeSequenceNumber;
-        Path = path ?? throw new ArgumentNullException(nameof(path));
+        Path = path;
     }
 
     /// <summary>Gets the SPM sequence number.</summary>
@@ -62,13 +62,12 @@ public sealed class PgmSourcePathMessage
     /// <returns><see langword="true"/> when parsing succeeded.</returns>
     public static bool TryParseBody(
         ReadOnlySpan<byte> source,
-        out PgmSourcePathMessage? body,
+        out PgmSourcePathMessage body,
         out int bytesRead)
     {
-        if (source.Length < 16 || !PgmNetworkAddress.TryParse(source.Slice(12), out var path, out var pathLength)
-            || path is null)
+        if (source.Length < 16 || !PgmNetworkAddress.TryParse(source.Slice(12), out var path, out var pathLength))
         {
-            body = null;
+            body = default;
             bytesRead = 0;
             return false;
         }
@@ -84,11 +83,9 @@ public sealed class PgmSourcePathMessage
 }
 
 /// <summary>Represents an ODATA or RDATA body.</summary>
-public sealed class PgmDataPacket
+public readonly ref struct PgmDataPacket
 {
-    private readonly byte[] _data;
-
-    /// <summary>Initializes a new instance of the <see cref="PgmDataPacket"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="PgmDataPacket"/> struct.</summary>
     /// <param name="sequenceNumber">The data sequence number.</param>
     /// <param name="trailingEdgeSequenceNumber">The trailing edge sequence number.</param>
     /// <param name="data">The transport service data unit bytes.</param>
@@ -101,7 +98,7 @@ public sealed class PgmDataPacket
 
         SequenceNumber = sequenceNumber;
         TrailingEdgeSequenceNumber = trailingEdgeSequenceNumber;
-        _data = data.ToArray();
+        Data = data;
     }
 
     /// <summary>Gets the data sequence number.</summary>
@@ -110,25 +107,22 @@ public sealed class PgmDataPacket
     /// <summary>Gets the trailing edge sequence number.</summary>
     public uint TrailingEdgeSequenceNumber { get; }
 
+    /// <summary>Gets the transport service data unit bytes.</summary>
+    public ReadOnlySpan<byte> Data { get; }
+
     /// <summary>Gets the transport service data unit length.</summary>
-    public ushort TsduLength => (ushort)_data.Length;
+    public ushort TsduLength => (ushort)Data.Length;
 
     /// <summary>Gets the encoded length of this body and its data.</summary>
-    public int BodyLength => 8 + _data.Length;
+    public int BodyLength => 8 + Data.Length;
 
     /// <summary>Copies the transport service data unit into a new array.</summary>
     /// <returns>The transport service data unit bytes.</returns>
-    public byte[] GetDataBytes()
-    {
-        var copy = new byte[_data.Length];
-        _data.CopyTo(copy, 0);
-        return copy;
-    }
+    public byte[] GetDataBytes() => Data.ToArray();
 
-    internal void CopyDataTo(Span<byte> destination)
-    {
-        _data.CopyTo(destination);
-    }
+    /// <summary>Copies the transport service data unit to a destination span.</summary>
+    /// <param name="destination">The destination span.</param>
+    public void CopyDataTo(Span<byte> destination) => Data.CopyTo(destination);
 
     /// <summary>Writes this body prefix without TSDU data.</summary>
     /// <param name="destination">The destination span.</param>
@@ -147,17 +141,17 @@ public sealed class PgmDataPacket
 }
 
 /// <summary>Represents a NAK, NNAK, or NCF body.</summary>
-public sealed class PgmNakPacket
+public readonly struct PgmNakPacket
 {
-    /// <summary>Initializes a new instance of the <see cref="PgmNakPacket"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="PgmNakPacket"/> struct.</summary>
     /// <param name="sequenceNumber">The requested sequence number.</param>
     /// <param name="source">The source network-layer address.</param>
     /// <param name="group">The multicast group network-layer address.</param>
     public PgmNakPacket(uint sequenceNumber, PgmNetworkAddress source, PgmNetworkAddress group)
     {
         SequenceNumber = sequenceNumber;
-        Source = source ?? throw new ArgumentNullException(nameof(source));
-        Group = group ?? throw new ArgumentNullException(nameof(group));
+        Source = source;
+        Group = group;
     }
 
     /// <summary>Gets the requested sequence number.</summary>
@@ -191,21 +185,20 @@ public sealed class PgmNakPacket
     /// <param name="body">The parsed body.</param>
     /// <param name="bytesRead">The number of bytes consumed.</param>
     /// <returns><see langword="true"/> when parsing succeeded.</returns>
-    public static bool TryParseBody(ReadOnlySpan<byte> source, out PgmNakPacket? body, out int bytesRead)
+    public static bool TryParseBody(ReadOnlySpan<byte> source, out PgmNakPacket body, out int bytesRead)
     {
-        if (source.Length < 12 || !PgmNetworkAddress.TryParse(source.Slice(4), out var sourceAddress,
-            out var sourceLength) || sourceAddress is null)
+        if (source.Length < 12
+            || !PgmNetworkAddress.TryParse(source.Slice(4), out var sourceAddress, out var sourceLength))
         {
-            body = null;
+            body = default;
             bytesRead = 0;
             return false;
         }
 
         var groupStart = 4 + sourceLength;
-        if (!PgmNetworkAddress.TryParse(source.Slice(groupStart), out var groupAddress, out var groupLength)
-            || groupAddress is null)
+        if (!PgmNetworkAddress.TryParse(source.Slice(groupStart), out var groupAddress, out var groupLength))
         {
-            body = null;
+            body = default;
             bytesRead = 0;
             return false;
         }
@@ -217,7 +210,7 @@ public sealed class PgmNakPacket
 }
 
 /// <summary>Represents an SPMR body.</summary>
-public sealed class PgmSourcePathMessageRequest
+public readonly struct PgmSourcePathMessageRequest
 {
     /// <summary>Gets the encoded length of this body.</summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage(

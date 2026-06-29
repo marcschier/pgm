@@ -1,5 +1,6 @@
 // Copyright (c) marcschier. Licensed under the MIT License.
 
+using System.Buffers;
 using System.Buffers.Binary;
 using Pgm.Fec;
 using Pgm.Net;
@@ -145,21 +146,6 @@ public sealed class PgmSender : IAsyncDisposable
 
     private static void ValidateOptions(PgmSenderOptions options)
     {
-        if (options.GlobalSourceId is null)
-        {
-            throw new ArgumentException("A global source identifier is required.", nameof(options));
-        }
-
-        if (options.SourceAddress is null)
-        {
-            throw new ArgumentException("A source address is required.", nameof(options));
-        }
-
-        if (options.GroupAddress is null)
-        {
-            throw new ArgumentException("A group address is required.", nameof(options));
-        }
-
         if (options.MaximumDataPayloadLength <= 0 || options.MaximumDataPayloadLength > ushort.MaxValue)
         {
             throw new ArgumentOutOfRangeException(nameof(options));
@@ -226,14 +212,17 @@ public sealed class PgmSender : IAsyncDisposable
         while (!cancellationToken.IsCancellationRequested)
         {
             int byteCount = await _channel.ReceiveAsync(buffer, cancellationToken).ConfigureAwait(false);
-            if (!PgmUdpEncapsulation.TryParsePayload(buffer.AsSpan(0, byteCount), out var packet) || packet is null)
+            if (!PgmUdpEncapsulation.TryParsePayload(buffer.AsSpan(0, byteCount), out var packet))
             {
                 continue;
             }
 
             if (packet.Header.Type == PgmPacketType.NegativeAcknowledgment)
             {
-                await HandleNakAsync(packet, cancellationToken).ConfigureAwait(false);
+                if (IsSessionPacket(packet) && packet.TryGetNak(out var nak))
+                {
+                    await HandleNakAsync(nak, packet.GetOptionBytes(), cancellationToken).ConfigureAwait(false);
+                }
             }
             else if (packet.Header.Type == PgmPacketType.SourcePathMessageRequest)
             {
@@ -242,15 +231,10 @@ public sealed class PgmSender : IAsyncDisposable
         }
     }
 
-    private async Task HandleNakAsync(PgmPacket packet, CancellationToken cancellationToken)
+    private async Task HandleNakAsync(PgmNakPacket nak, byte[] options, CancellationToken cancellationToken)
     {
-        if (!IsSessionPacket(packet) || !(packet.Body is PgmNakPacket nak))
-        {
-            return;
-        }
-
         await RepairSequenceAsync(nak, nak.SequenceNumber, cancellationToken).ConfigureAwait(false);
-        uint[] additionalSequences = ReadNakList(packet.GetOptionBytes());
+        uint[] additionalSequences = ReadNakList(options);
 
         for (int i = 0; i < additionalSequences.Length; i++)
         {
@@ -390,9 +374,12 @@ public sealed class PgmSender : IAsyncDisposable
             leadingEdgeSequenceNumber,
             _options.SourceAddress);
         PgmHeader header = CreateHeader(PgmPacketType.SourcePathMessage, PgmHeaderOptions.None, 0);
-        PgmPacket packet = PgmPacket.CreateSourcePathMessage(header, body, Array.Empty<byte>());
+        PgmPacket packet = PgmPacket.CreateSourcePathMessage(header, body, ReadOnlySpan<byte>.Empty);
 
-        await SendPacketAsync(packet, cancellationToken).ConfigureAwait(false);
+        int length = packet.EncodedLength;
+        byte[] datagram = ArrayPool<byte>.Shared.Rent(length);
+        _ = packet.TryWrite(datagram);
+        await SendDatagramAsync(datagram, length, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task SendNakConfirmationAsync(
@@ -402,9 +389,12 @@ public sealed class PgmSender : IAsyncDisposable
     {
         PgmNakPacket body = new PgmNakPacket(sequenceNumber, nak.Source, nak.Group);
         PgmHeader header = CreateHeader(PgmPacketType.NakConfirmation, PgmHeaderOptions.None, 0);
-        PgmPacket packet = PgmPacket.CreateNakLike(header, body, Array.Empty<byte>());
+        PgmPacket packet = PgmPacket.CreateNakLike(header, body, ReadOnlySpan<byte>.Empty);
 
-        await SendPacketAsync(packet, cancellationToken).ConfigureAwait(false);
+        int length = packet.EncodedLength;
+        byte[] datagram = ArrayPool<byte>.Shared.Rent(length);
+        _ = packet.TryWrite(datagram);
+        await SendDatagramAsync(datagram, length, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task SendEntryAsync(
@@ -425,7 +415,10 @@ public sealed class PgmSender : IAsyncDisposable
             entry.Data);
         PgmPacket packet = PgmPacket.CreateData(header, body, entry.Options);
 
-        await SendPacketAsync(packet, cancellationToken).ConfigureAwait(false);
+        int length = packet.EncodedLength;
+        byte[] datagram = ArrayPool<byte>.Shared.Rent(length);
+        _ = packet.TryWrite(datagram);
+        await SendDatagramAsync(datagram, length, cancellationToken).ConfigureAwait(false);
     }
 
     private PgmHeader CreateHeader(PgmPacketType type, PgmHeaderOptions options, ushort tsduLength)
@@ -440,23 +433,18 @@ public sealed class PgmSender : IAsyncDisposable
             tsduLength);
     }
 
-    private async Task SendPacketAsync(PgmPacket packet, CancellationToken cancellationToken)
+    private async Task SendDatagramAsync(byte[] datagram, int length, CancellationToken cancellationToken)
     {
-        byte[] datagram = new byte[packet.EncodedLength];
-        if (!PgmUdpEncapsulation.TryWritePayload(packet, datagram))
-        {
-            throw new InvalidOperationException("The PGM packet could not be encoded.");
-        }
-
         await _sendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             await ApplyRateLimitAsync(cancellationToken).ConfigureAwait(false);
-            await _channel.SendAsync(datagram, cancellationToken).ConfigureAwait(false);
+            await _channel.SendAsync(datagram.AsMemory(0, length), cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             _sendGate.Release();
+            ArrayPool<byte>.Shared.Return(datagram);
         }
     }
 

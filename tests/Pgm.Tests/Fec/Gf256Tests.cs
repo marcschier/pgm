@@ -48,4 +48,34 @@ public sealed class Gf256Tests
             await Assert.That(Gf256.Multiply((byte)value, inverse)).IsEqualTo((byte)1);
         }
     }
+
+    [Test]
+    public async Task MultiplyAdd_AcrossLengthsAndCoefficients_MatchesScalar()
+    {
+        var random = new Random(24680);
+        int[] lengths =
+        [
+            0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 47, 48, 49, 63, 64, 65, 79, 95, 111, 127,
+            128, 129, 191, 255, 256, 257, 511, 512, 513, 1024,
+        ];
+
+        for (int coefficient = 0; coefficient <= byte.MaxValue; coefficient++)
+        {
+            foreach (int length in lengths)
+            {
+                byte[] source = new byte[length];
+                byte[] expected = new byte[length];
+                byte[] actual = new byte[length];
+
+                random.NextBytes(source);
+                random.NextBytes(expected);
+                expected.AsSpan().CopyTo(actual);
+
+                Gf256.MultiplyAddScalar(source, expected, (byte)coefficient);
+                Gf256.MultiplyAdd(source, actual, (byte)coefficient);
+
+                await Assert.That(actual.AsSpan().SequenceEqual(expected)).IsTrue();
+            }
+        }
+    }
 }

@@ -105,6 +105,24 @@ jobs:
           -CoverageFile tests/Pgm.Tests/bin/Release/net10.0/TestResults/coverage.cobertura.xml
           -MinLineRate 0.85
 
+  benchmarks:
+    name: benchmark smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+      - name: Run benchmarks (smoke)
+        run: >
+          dotnet run --project benchmarks/Pgm.Benchmarks -c Release -f net10.0
+          -- --filter '*' --job Dry
+
   publish-github:
     name: publish to GitHub Packages
     needs: [ build-test, aot-test, coverage ]

@@ -67,7 +67,7 @@ public sealed class PgmReceiver : IAsyncDisposable
             _nakTask = Task.Run(NakLoopAsync, CancellationToken.None);
         }
 
-        await SendPacketAsync(CreateSpmr(), cancellationToken).ConfigureAwait(false);
+        await SendDatagramAsync(EncodeSpmr(), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Receives the next completely reassembled APDU.</summary>
@@ -138,7 +138,7 @@ public sealed class PgmReceiver : IAsyncDisposable
                 break;
             }
 
-            if (PgmPacket.TryParse(buffer.AsSpan(0, length), out var packet) && packet is not null)
+            if (PgmPacket.TryParse(buffer.AsSpan(0, length), out var packet))
             {
                 ProcessPacket(packet);
             }
@@ -149,7 +149,7 @@ public sealed class PgmReceiver : IAsyncDisposable
     {
         while (!_stop.IsCancellationRequested)
         {
-            List<PgmPacket> naks;
+            List<byte[]> naks;
 
             lock (_gate)
             {
@@ -160,7 +160,7 @@ public sealed class PgmReceiver : IAsyncDisposable
             {
                 try
                 {
-                    await SendPacketAsync(naks[index], _stop.Token).ConfigureAwait(false);
+                    await SendDatagramAsync(naks[index], _stop.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -184,17 +184,17 @@ public sealed class PgmReceiver : IAsyncDisposable
         }
     }
 
-    private List<PgmPacket> CollectDueNaks()
+    private List<byte[]> CollectDueNaks()
     {
         long now = _timeProvider.GetTimestamp();
-        var packets = new List<PgmPacket>();
+        var datagrams = new List<byte[]>();
 
         foreach (ReceiveWindow window in _windows.Values)
         {
-            window.CollectDueNaks(now, packets);
+            window.CollectDueNaks(now, datagrams);
         }
 
-        return packets;
+        return datagrams;
     }
 
     private void ProcessPacket(PgmPacket packet)
@@ -226,9 +226,9 @@ public sealed class PgmReceiver : IAsyncDisposable
         }
     }
 
-    private PgmPacket CreateSpmr()
+    private byte[] EncodeSpmr()
     {
-        return PgmPacket.CreateSourcePathMessageRequest(
+        PgmPacket packet = PgmPacket.CreateSourcePathMessageRequest(
             new PgmHeader(
                 _options.SourcePort,
                 _options.DestinationPort,
@@ -237,17 +237,14 @@ public sealed class PgmReceiver : IAsyncDisposable
                 0,
                 _options.ReceiverGlobalSourceId,
                 0),
-            Array.Empty<byte>());
+            ReadOnlySpan<byte>.Empty);
+        var datagram = new byte[packet.EncodedLength];
+        _ = packet.TryWrite(datagram);
+        return datagram;
     }
 
-    private async ValueTask SendPacketAsync(PgmPacket packet, CancellationToken cancellationToken)
+    private async ValueTask SendDatagramAsync(byte[] datagram, CancellationToken cancellationToken)
     {
-        byte[] datagram = new byte[packet.EncodedLength];
-        if (!packet.TryWrite(datagram))
-        {
-            throw new InvalidOperationException("The PGM packet could not be encoded.");
-        }
-
         await _channel.SendAsync(datagram, cancellationToken).ConfigureAwait(false);
     }
 

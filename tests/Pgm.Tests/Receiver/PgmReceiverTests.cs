@@ -128,12 +128,12 @@ public sealed class PgmReceiverTests
         while (!cancellationToken.IsCancellationRequested)
         {
             int length = await channel.ReceiveAsync(buffer, cancellationToken);
-            if (!PgmPacket.TryParse(buffer.AsSpan(0, length), out var packet) || packet is null)
+            if (!PgmPacket.TryParse(buffer.AsSpan(0, length), out var packet))
             {
                 continue;
             }
 
-            if (packet.Header.Type != PgmPacketType.NegativeAcknowledgment || packet.Body is not PgmNakPacket nak)
+            if (packet.Header.Type != PgmPacketType.NegativeAcknowledgment || !packet.TryGetNak(out var nak))
             {
                 continue;
             }
@@ -156,31 +156,31 @@ public sealed class PgmReceiverTests
         }
     }
 
-    private static PgmPacket CreateSpm(uint trailingEdge, uint leadingEdge)
+    private static byte[] CreateSpm(uint trailingEdge, uint leadingEdge)
     {
-        return PgmPacket.CreateSourcePathMessage(
+        return Encode(PgmPacket.CreateSourcePathMessage(
             Header(PgmPacketType.SourcePathMessage, 0),
             new PgmSourcePathMessage(1, trailingEdge, leadingEdge, SourceAddress),
-            Array.Empty<byte>());
+            ReadOnlySpan<byte>.Empty));
     }
 
-    private static PgmPacket CreateData(uint sequenceNumber, uint trailingEdge, byte[] data)
+    private static byte[] CreateData(uint sequenceNumber, uint trailingEdge, byte[] data)
     {
-        return PgmPacket.CreateData(
+        return Encode(PgmPacket.CreateData(
             Header(PgmPacketType.OriginalData, (ushort)data.Length),
             new PgmDataPacket(sequenceNumber, trailingEdge, data),
-            Array.Empty<byte>());
+            ReadOnlySpan<byte>.Empty));
     }
 
-    private static PgmPacket CreateRepair(uint sequenceNumber, byte[] data)
+    private static byte[] CreateRepair(uint sequenceNumber, byte[] data)
     {
-        return PgmPacket.CreateData(
+        return Encode(PgmPacket.CreateData(
             Header(PgmPacketType.RepairData, (ushort)data.Length),
             new PgmDataPacket(sequenceNumber, 1, data),
-            Array.Empty<byte>());
+            ReadOnlySpan<byte>.Empty));
     }
 
-    private static PgmPacket CreateFragment(
+    private static byte[] CreateFragment(
         uint sequenceNumber,
         uint firstSequenceNumber,
         uint offset,
@@ -188,30 +188,37 @@ public sealed class PgmReceiverTests
         byte[] data)
     {
         byte[] options = CreateFragmentOptions(firstSequenceNumber, offset, apduLength);
-        return PgmPacket.CreateData(
+        return Encode(PgmPacket.CreateData(
             Header(PgmPacketType.OriginalData, (ushort)data.Length, PgmHeaderOptions.OptionsPresent),
             new PgmDataPacket(sequenceNumber, firstSequenceNumber, data),
-            options);
+            options));
     }
 
-    private static PgmPacket CreateFecData(uint sequenceNumber, byte[] data, bool parity)
+    private static byte[] CreateFecData(uint sequenceNumber, byte[] data, bool parity)
     {
         byte[] options = CreateFecOptions(1, 3);
-        return PgmPacket.CreateData(
+        return Encode(PgmPacket.CreateData(
             Header(
                 parity ? PgmPacketType.RepairData : PgmPacketType.OriginalData,
                 (ushort)data.Length,
                 PgmHeaderOptions.OptionsPresent | (parity ? PgmHeaderOptions.Parity : PgmHeaderOptions.None)),
             new PgmDataPacket(sequenceNumber, 1, data),
-            options);
+            options));
     }
 
-    private static PgmPacket CreateNcf(uint sequenceNumber)
+    private static byte[] CreateNcf(uint sequenceNumber)
     {
-        return PgmPacket.CreateNakLike(
+        return Encode(PgmPacket.CreateNakLike(
             Header(PgmPacketType.NakConfirmation, 0),
             new PgmNakPacket(sequenceNumber, SourceAddress, GroupAddress),
-            Array.Empty<byte>());
+            ReadOnlySpan<byte>.Empty));
+    }
+
+    private static byte[] Encode(PgmPacket packet)
+    {
+        var datagram = new byte[packet.EncodedLength];
+        _ = packet.TryWrite(datagram);
+        return datagram;
     }
 
     private static PgmHeader Header(
@@ -241,11 +248,9 @@ public sealed class PgmReceiverTests
 
     private static async ValueTask SendAsync(
         InMemoryDatagramChannel channel,
-        PgmPacket packet,
+        byte[] datagram,
         CancellationToken cancellationToken)
     {
-        var datagram = new byte[packet.EncodedLength];
-        _ = packet.TryWrite(datagram);
         await channel.SendAsync(datagram, cancellationToken);
     }
 

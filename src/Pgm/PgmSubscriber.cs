@@ -225,8 +225,8 @@ public sealed class PgmSubscriber : IAsyncDisposable
         private static bool IsEmptyStartupSpm(ReadOnlySpan<byte> datagram)
         {
             return PgmUdpEncapsulation.TryParsePayload(datagram, out var packet)
-                && packet?.Header.Type == PgmPacketType.SourcePathMessage
-                && packet.Body is PgmSourcePathMessage spm
+                && packet.Header.Type == PgmPacketType.SourcePathMessage
+                && packet.TryGetSourcePathMessage(out var spm)
                 && spm.TrailingEdgeSequenceNumber == 0
                 && spm.LeadingEdgeSequenceNumber == 0;
         }

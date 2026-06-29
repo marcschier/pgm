@@ -16,4 +16,7 @@
   <Folder Name="/samples/">
     <Project Path="samples/Pgm.Samples/Pgm.Samples.csproj" />
   </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Pgm.Benchmarks/Pgm.Benchmarks.csproj" />
+  </Folder>
 </Solution>

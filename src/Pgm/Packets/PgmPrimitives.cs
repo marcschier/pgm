@@ -66,14 +66,12 @@ public enum PgmAddressFamily : ushort
 }
 
 /// <summary>Represents the six-octet global source identifier in a PGM TSI.</summary>
-public sealed class PgmGlobalSourceId
+public readonly struct PgmGlobalSourceId : IEquatable<PgmGlobalSourceId>
 {
     /// <summary>The encoded length of a PGM global source identifier.</summary>
     public const int EncodedLength = 6;
 
-    private readonly byte[] _bytes;
-
-    /// <summary>Initializes a new instance of the <see cref="PgmGlobalSourceId"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="PgmGlobalSourceId"/> struct.</summary>
     /// <param name="value">The low 48 bits to encode as the global source identifier.</param>
     public PgmGlobalSourceId(ulong value)
     {
@@ -82,27 +80,23 @@ public sealed class PgmGlobalSourceId
             throw new ArgumentOutOfRangeException(nameof(value));
         }
 
-        _bytes = new byte[EncodedLength];
-        _bytes[0] = (byte)(value >> 40);
-        _bytes[1] = (byte)(value >> 32);
-        _bytes[2] = (byte)(value >> 24);
-        _bytes[3] = (byte)(value >> 16);
-        _bytes[4] = (byte)(value >> 8);
-        _bytes[5] = (byte)value;
-    }
-
-    private PgmGlobalSourceId(byte[] bytes)
-    {
-        _bytes = bytes;
+        Value = value;
     }
 
     /// <summary>Gets the numeric value of the global source identifier.</summary>
-    public ulong Value => ((ulong)_bytes[0] << 40)
-        | ((ulong)_bytes[1] << 32)
-        | ((ulong)_bytes[2] << 24)
-        | ((ulong)_bytes[3] << 16)
-        | ((ulong)_bytes[4] << 8)
-        | _bytes[5];
+    public ulong Value { get; }
+
+    /// <summary>Determines whether two identifiers are equal.</summary>
+    /// <param name="left">The left identifier.</param>
+    /// <param name="right">The right identifier.</param>
+    /// <returns><see langword="true"/> when the identifiers are equal.</returns>
+    public static bool operator ==(PgmGlobalSourceId left, PgmGlobalSourceId right) => left.Value == right.Value;
+
+    /// <summary>Determines whether two identifiers differ.</summary>
+    /// <param name="left">The left identifier.</param>
+    /// <param name="right">The right identifier.</param>
+    /// <returns><see langword="true"/> when the identifiers differ.</returns>
+    public static bool operator !=(PgmGlobalSourceId left, PgmGlobalSourceId right) => left.Value != right.Value;
 
     /// <summary>Writes the global source identifier to a destination span.</summary>
     /// <param name="destination">The destination span.</param>
@@ -114,74 +108,119 @@ public sealed class PgmGlobalSourceId
             return false;
         }
 
-        _bytes.CopyTo(destination);
+        destination[0] = (byte)(Value >> 40);
+        destination[1] = (byte)(Value >> 32);
+        destination[2] = (byte)(Value >> 24);
+        destination[3] = (byte)(Value >> 16);
+        destination[4] = (byte)(Value >> 8);
+        destination[5] = (byte)Value;
         return true;
-    }
-
-    /// <summary>Copies the encoded global source identifier into a new array.</summary>
-    /// <returns>The encoded global source identifier.</returns>
-    public byte[] ToArray()
-    {
-        var copy = new byte[EncodedLength];
-        _bytes.CopyTo(copy, 0);
-        return copy;
     }
 
     /// <summary>Parses a global source identifier from a source span.</summary>
     /// <param name="source">The source span.</param>
     /// <param name="globalSourceId">The parsed global source identifier.</param>
     /// <returns><see langword="true"/> when parsing succeeded.</returns>
-    public static bool TryParse(ReadOnlySpan<byte> source, out PgmGlobalSourceId? globalSourceId)
+    public static bool TryParse(ReadOnlySpan<byte> source, out PgmGlobalSourceId globalSourceId)
     {
         if (source.Length < EncodedLength)
         {
-            globalSourceId = null;
+            globalSourceId = default;
             return false;
         }
 
-        var parsedBytes = new byte[EncodedLength];
-        source.Slice(0, EncodedLength).CopyTo(parsedBytes);
-        globalSourceId = new PgmGlobalSourceId(parsedBytes);
+        ulong value = ((ulong)source[0] << 40)
+            | ((ulong)source[1] << 32)
+            | ((ulong)source[2] << 24)
+            | ((ulong)source[3] << 16)
+            | ((ulong)source[4] << 8)
+            | source[5];
+        globalSourceId = new PgmGlobalSourceId(value);
         return true;
     }
+
+    /// <inheritdoc/>
+    public bool Equals(PgmGlobalSourceId other) => Value == other.Value;
+
+    /// <inheritdoc/>
+    public override bool Equals(object? obj) => obj is PgmGlobalSourceId other && Equals(other);
+
+    /// <inheritdoc/>
+    public override int GetHashCode() => Value.GetHashCode();
 }
 
 /// <summary>Represents a PGM network-layer address.</summary>
-public sealed class PgmNetworkAddress
+public readonly struct PgmNetworkAddress : IEquatable<PgmNetworkAddress>
 {
     /// <summary>The size of the AFI and reserved fields that prefix an NLA.</summary>
     public const int HeaderLength = 4;
 
-    private readonly byte[] _address;
+    private readonly ulong _high;
+    private readonly ulong _low;
+    private readonly byte _length;
 
-    /// <summary>Initializes a new instance of the <see cref="PgmNetworkAddress"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="PgmNetworkAddress"/> struct.</summary>
     /// <param name="addressFamily">The address family indicator.</param>
     /// <param name="address">The address bytes.</param>
     public PgmNetworkAddress(PgmAddressFamily addressFamily, ReadOnlySpan<byte> address)
     {
         var expectedLength = GetAddressLength(addressFamily);
-        if (address.Length != expectedLength)
+        if (expectedLength == 0 || address.Length != expectedLength)
         {
             throw new ArgumentException("The address length does not match the address family.", nameof(address));
         }
 
         AddressFamily = addressFamily;
-        _address = address.ToArray();
+        _length = (byte)expectedLength;
+        Span<byte> bytes = stackalloc byte[16];
+        bytes.Clear();
+        address.CopyTo(bytes);
+        _high = BinaryPrimitives.ReadUInt64BigEndian(bytes);
+        _low = BinaryPrimitives.ReadUInt64BigEndian(bytes.Slice(8));
     }
 
     /// <summary>Gets the address family indicator.</summary>
     public PgmAddressFamily AddressFamily { get; }
 
     /// <summary>Gets the encoded length of this network-layer address.</summary>
-    public int EncodedLength => HeaderLength + _address.Length;
+    public int EncodedLength => HeaderLength + _length;
+
+    /// <summary>Determines whether two addresses are equal.</summary>
+    /// <param name="left">The left address.</param>
+    /// <param name="right">The right address.</param>
+    /// <returns><see langword="true"/> when the addresses are equal.</returns>
+    public static bool operator ==(PgmNetworkAddress left, PgmNetworkAddress right) => left.Equals(right);
+
+    /// <summary>Determines whether two addresses differ.</summary>
+    /// <param name="left">The left address.</param>
+    /// <param name="right">The right address.</param>
+    /// <returns><see langword="true"/> when the addresses differ.</returns>
+    public static bool operator !=(PgmNetworkAddress left, PgmNetworkAddress right) => !left.Equals(right);
 
     /// <summary>Copies the address bytes into a new array.</summary>
     /// <returns>The address bytes.</returns>
     public byte[] GetAddressBytes()
     {
-        var copy = new byte[_address.Length];
-        _address.CopyTo(copy, 0);
+        var copy = new byte[_length];
+        _ = TryCopyAddress(copy);
         return copy;
+    }
+
+    /// <summary>Copies the address octets (without the AFI prefix) to a destination span.</summary>
+    /// <param name="destination">The destination span.</param>
+    /// <returns><see langword="true"/> when the address was copied.</returns>
+    public bool TryCopyAddress(Span<byte> destination)
+    {
+        if (destination.Length < _length)
+        {
+            return false;
+        }
+
+        Span<byte> bytes = stackalloc byte[16];
+        BinaryPrimitives.WriteUInt64BigEndian(bytes, _high);
+        BinaryPrimitives.WriteUInt64BigEndian(bytes.Slice(8), _low);
+        bytes.Slice(0, _length).CopyTo(destination);
+        return true;
     }
 
     /// <summary>Writes this network-layer address to a destination span.</summary>
@@ -196,8 +235,7 @@ public sealed class PgmNetworkAddress
 
         BinaryPrimitives.WriteUInt16BigEndian(destination, (ushort)AddressFamily);
         BinaryPrimitives.WriteUInt16BigEndian(destination.Slice(2), 0);
-        _address.CopyTo(destination.Slice(HeaderLength));
-        return true;
+        return TryCopyAddress(destination.Slice(HeaderLength));
     }
 
     /// <summary>Parses a network-layer address from a source span.</summary>
@@ -205,14 +243,11 @@ public sealed class PgmNetworkAddress
     /// <param name="address">The parsed network-layer address.</param>
     /// <param name="bytesRead">The number of bytes consumed.</param>
     /// <returns><see langword="true"/> when parsing succeeded.</returns>
-    public static bool TryParse(
-        ReadOnlySpan<byte> source,
-        out PgmNetworkAddress? address,
-        out int bytesRead)
+    public static bool TryParse(ReadOnlySpan<byte> source, out PgmNetworkAddress address, out int bytesRead)
     {
         if (source.Length < HeaderLength)
         {
-            address = null;
+            address = default;
             bytesRead = 0;
             return false;
         }
@@ -222,7 +257,7 @@ public sealed class PgmNetworkAddress
         var encodedLength = HeaderLength + addressLength;
         if (addressLength == 0 || source.Length < encodedLength)
         {
-            address = null;
+            address = default;
             bytesRead = 0;
             return false;
         }
@@ -249,15 +284,25 @@ public sealed class PgmNetworkAddress
 
         return 0;
     }
+
+    /// <inheritdoc/>
+    public bool Equals(PgmNetworkAddress other) =>
+        AddressFamily == other.AddressFamily && _length == other._length && _high == other._high && _low == other._low;
+
+    /// <inheritdoc/>
+    public override bool Equals(object? obj) => obj is PgmNetworkAddress other && Equals(other);
+
+    /// <inheritdoc/>
+    public override int GetHashCode() => HashCode.Combine((ushort)AddressFamily, _length, _high, _low);
 }
 
 /// <summary>Represents the fixed common PGM header defined by RFC 3208 section 8.</summary>
-public sealed class PgmHeader
+public readonly struct PgmHeader
 {
     /// <summary>The encoded length of the fixed common PGM header.</summary>
     public const int EncodedLength = 16;
 
-    /// <summary>Initializes a new instance of the <see cref="PgmHeader"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="PgmHeader"/> struct.</summary>
     /// <param name="sourcePort">The source port field.</param>
     /// <param name="destinationPort">The destination port field.</param>
     /// <param name="type">The packet type.</param>
@@ -279,7 +324,7 @@ public sealed class PgmHeader
         Type = type;
         Options = options;
         Checksum = checksum;
-        GlobalSourceId = globalSourceId ?? throw new ArgumentNullException(nameof(globalSourceId));
+        GlobalSourceId = globalSourceId;
         TsduLength = tsduLength;
     }
 
@@ -328,27 +373,22 @@ public sealed class PgmHeader
     /// <param name="source">The source span.</param>
     /// <param name="header">The parsed header.</param>
     /// <returns><see langword="true"/> when parsing succeeded.</returns>
-    public static bool TryParse(ReadOnlySpan<byte> source, out PgmHeader? header)
+    public static bool TryParse(ReadOnlySpan<byte> source, out PgmHeader header)
     {
         if (source.Length < EncodedLength)
         {
-            header = null;
+            header = default;
             return false;
         }
 
         var type = source[4];
         if ((type & 0xF0) != 0 || !PgmPacketConstants.IsKnownPacketType((PgmPacketType)type))
         {
-            header = null;
+            header = default;
             return false;
         }
 
-        if (!PgmGlobalSourceId.TryParse(source.Slice(8), out var globalSourceId) || globalSourceId is null)
-        {
-            header = null;
-            return false;
-        }
-
+        _ = PgmGlobalSourceId.TryParse(source.Slice(8), out var globalSourceId);
         header = new PgmHeader(
             BinaryPrimitives.ReadUInt16BigEndian(source),
             BinaryPrimitives.ReadUInt16BigEndian(source.Slice(2)),
