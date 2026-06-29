@@ -1,4 +1,4 @@
-# Pgm
+# 📡 Pgm
 
 [![CI](https://github.com/marcschier/pgm/actions/workflows/ci.yml/badge.svg)](https://github.com/marcschier/pgm/actions/workflows/ci.yml) [![NuGet](https://img.shields.io/nuget/v/Pgm.svg?logo=nuget&label=NuGet)](https://www.nuget.org/packages/Pgm) [![GitHub Packages](https://img.shields.io/badge/GitHub%20Packages-Pgm-2088FF?logo=github&logoColor=white)](https://github.com/marcschier/pgm/pkgs/nuget/Pgm)
 
@@ -14,24 +14,24 @@ A pure-managed, **NativeAOT-ready** implementation of **PGM (Pragmatic General M
 dotnet add package Pgm
 ```
 
-## Build & test
+## 🛠️ Build & test
 
 ```shell
 dotnet build Pgm.slnx -c Release
 dotnet test Pgm.slnx -c Release
 ```
 
-## Documentation
+## 📚 Documentation
 
 - [Getting started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
 - [Wire format](docs/wire-format.md)
 - [API reference](docs/api.md)
 
-## Samples
+## 🧪 Samples
 
 - [In memory Publish/Subscriber](samples/README.md) — 🚀 publisher + two subscribers over the in-memory bus; runs anywhere, no real multicast.
 
-## License
+## 📄 License
 
 [MIT](./LICENSE)
