@@ -19,6 +19,15 @@ dotnet build Pgm.slnx -c Release
 dotnet test Pgm.slnx -c Release
 ```
 
+## Documentation
+
+- [Getting started](docs/getting-started.md)
+- [Architecture](docs/architecture.md)
+- [Wire format](docs/wire-format.md)
+- [API reference](docs/api.md)
+
+See [`samples/Pgm.Samples`](samples/Pgm.Samples) for a runnable publisher/multi-subscriber demo over an in-memory bus.
+
 ## License
 
 [MIT](./LICENSE)
