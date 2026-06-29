@@ -1,7 +1,7 @@
-# tests/Pgm.Tests
+# tests
 
-[TUnit](https://github.com/thomhurst/TUnit) test suite for the `Pgm` library. Folders mirror `src/Pgm`, so a test
-lives beside the area it covers.
+[TUnit](https://github.com/thomhurst/TUnit) test suite for the `Pgm` library, in [`Pgm.Tests/`](Pgm.Tests). Folders
+mirror `src/Pgm`, so a test lives beside the area it covers.
 
 | Folder | Covers |
 | --- | --- |

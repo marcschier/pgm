@@ -1,9 +1,10 @@
-# src/Pgm
+# src
 
-The `Pgm` library — a pure-managed implementation of PGM (RFC 3208) reliable multicast over UDP. Everything below the
-public facade is layered so each concern is independently testable over a single `IPgmDatagramChannel`.
+The `Pgm` library lives here under [`Pgm/`](Pgm) — a pure-managed implementation of PGM (RFC 3208) reliable multicast
+over UDP. Everything below the public facade is layered so each concern is independently testable over a single
+`IPgmDatagramChannel`.
 
-## Folders
+## Folders (`src/Pgm`)
 
 | Folder | Contents |
 | --- | --- |
@@ -14,9 +15,9 @@ public facade is layered so each concern is independently testable over a single
 | `Receiver` | `PgmReceiver`: receive window, gap detection, NAK backoff/confirmation, FEC repair, fragment reassembly. |
 | `Congestion` | PGMCC: ACKer election, congestion window, token-bucket rate limiter. |
 
-## Public facade (root)
+## Public facade
 
 `PgmPublisher` / `PgmSubscriber` and their options compose the layers; `PgmAddressConversion` and `PgmNetworkDefaults`
-are small helpers. See the [API reference](../../docs/api.md) and [architecture](../../docs/architecture.md).
+are small helpers. See the [API reference](../docs/api.md) and [architecture](../docs/architecture.md).
 
 TFMs: `netstandard2.0;netstandard2.1;net8.0;net9.0;net10.0`; NativeAOT-clean on net8+.

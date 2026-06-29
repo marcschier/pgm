@@ -1,7 +1,7 @@
-# Pgm.Samples
+# samples
 
-A tiny console demo: one `PgmPublisher` sends three messages to two `PgmSubscriber`s over an `InMemoryMulticastBus`,
-so it runs anywhere — no real multicast needed.
+A tiny console demo in [`Pgm.Samples/`](Pgm.Samples): one `PgmPublisher` sends three messages to two
+`PgmSubscriber`s over an `InMemoryMulticastBus`, so it runs anywhere — no real multicast needed.
 
 ## Run
 
@@ -24,4 +24,4 @@ subscriber-2 received: PGM
 
 To send over a real network, construct the publisher and subscriber from `PgmPublisherOptions` /
 `PgmSubscriberOptions` (multicast group + port) instead of `bus.CreateChannel()` — see
-[getting started](../../docs/getting-started.md).
+[getting started](../docs/getting-started.md).
