@@ -53,4 +53,57 @@ public sealed class CongestionRateLimiterTests
         await Assert.That(canSendAtReservedTime).IsFalse();
         await Assert.That(canSendAfterReservation).IsTrue();
     }
+
+    [Test]
+    public async Task RateLimiter_AvailableTokens_StartsAtCapacity()
+    {
+        RateLimiter limiter = new RateLimiter(new ManualTimeProvider(), tokensPerSecond: 2, capacity: 5);
+
+        await Assert.That(limiter.AvailableTokens).IsEqualTo(5d);
+    }
+
+    [Test]
+    public async Task RateLimiter_GetDelay_WhenTokensAvailable_ReturnsZero()
+    {
+        RateLimiter limiter = new RateLimiter(new ManualTimeProvider(), tokensPerSecond: 2, capacity: 2);
+
+        await Assert.That(limiter.GetDelay()).IsEqualTo(TimeSpan.Zero);
+    }
+
+    [Test]
+    public async Task RateLimiter_NullTimeProvider_Throws()
+    {
+        await Assert.That(() => new RateLimiter(null!, 1, 1)).Throws<ArgumentNullException>();
+    }
+
+    [Test]
+    [Arguments(double.NaN)]
+    [Arguments(0)]
+    [Arguments(-1)]
+    public async Task RateLimiter_InvalidTokensPerSecond_Throws(double tokensPerSecond)
+    {
+        await Assert.That(() => new RateLimiter(new ManualTimeProvider(), tokensPerSecond, 1))
+            .Throws<ArgumentOutOfRangeException>();
+    }
+
+    [Test]
+    [Arguments(double.NaN)]
+    [Arguments(0)]
+    [Arguments(-1)]
+    public async Task RateLimiter_InvalidCapacity_Throws(double capacity)
+    {
+        await Assert.That(() => new RateLimiter(new ManualTimeProvider(), 1, capacity))
+            .Throws<ArgumentOutOfRangeException>();
+    }
+
+    [Test]
+    [Arguments(double.NaN)]
+    [Arguments(0)]
+    [Arguments(-1)]
+    public async Task RateLimiter_ConsumeInvalidTokenCount_Throws(double tokens)
+    {
+        RateLimiter limiter = new RateLimiter(new ManualTimeProvider(), tokensPerSecond: 2, capacity: 2);
+
+        await Assert.That(() => limiter.TryConsume(tokens)).Throws<ArgumentOutOfRangeException>();
+    }
 }

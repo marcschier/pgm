@@ -104,6 +104,80 @@ public sealed class PgmSenderStateTests
     }
 
     [Test]
+    public async Task PgmSender_Repairs_Every_Sequence_Listed_In_Nak_List()
+    {
+        InMemoryMulticastBus bus = new(seed: 42);
+        await using InMemoryDatagramChannel source = bus.CreateChannel();
+        await using InMemoryDatagramChannel receiver = bus.CreateChannel();
+        PgmSenderOptions options = Options();
+        await using PgmSender sender = new PgmSender(source, options);
+
+        await sender.StartAsync();
+        await sender.SendAsync(new byte[] { 1 });
+        await sender.SendAsync(new byte[] { 2 });
+        _ = await ReceivePacketAsync(receiver, PgmPacketType.OriginalData);
+        _ = await ReceivePacketAsync(receiver, PgmPacketType.OriginalData);
+
+        await receiver.SendAsync(CreateNakWithList(options, sequenceNumber: 1, additional: 2));
+
+        List<uint> repairedSequences = await CollectRepairSequencesAsync(receiver, count: 2);
+
+        await Assert.That(repairedSequences).Contains(1U);
+        await Assert.That(repairedSequences).Contains(2U);
+    }
+
+    [Test]
+    public async Task PgmSender_Repairs_With_OnDemand_Parity_When_Sequence_Not_Windowed()
+    {
+        InMemoryMulticastBus bus = new(seed: 42);
+        await using InMemoryDatagramChannel source = bus.CreateChannel();
+        await using InMemoryDatagramChannel receiver = bus.CreateChannel();
+        PgmSenderOptions options = Options(onDemandParityPacketCount: 1);
+        await using PgmSender sender = new PgmSender(source, options);
+
+        await sender.StartAsync();
+        await sender.SendAsync(new byte[] { 5, 6 });
+        _ = await ReceivePacketAsync(receiver, PgmPacketType.OriginalData);
+
+        await receiver.SendAsync(CreateNak(options, sequenceNumber: 2));
+
+        byte[] ncfDatagram = await ReceivePacketAsync(receiver, PgmPacketType.NakConfirmation);
+        byte[] repairDatagram = await ReceivePacketAsync(receiver, PgmPacketType.RepairData);
+        _ = PgmPacket.TryParse(ncfDatagram, out var ncf);
+        _ = PgmPacket.TryParse(repairDatagram, out var repair);
+        _ = ncf.TryGetNak(out var ncfBody);
+        uint ncfSeq = ncfBody.SequenceNumber;
+        bool repairIsParity = (repair.Header.Options & PgmHeaderOptions.Parity) != 0;
+
+        await Assert.That(ncfSeq).IsEqualTo(2U);
+        await Assert.That(repairIsParity).IsTrue();
+    }
+
+    [Test]
+    public async Task PgmSender_Ignores_Nak_For_Unknown_Sequence_Without_Parity()
+    {
+        InMemoryMulticastBus bus = new(seed: 42);
+        await using InMemoryDatagramChannel source = bus.CreateChannel();
+        await using InMemoryDatagramChannel receiver = bus.CreateChannel();
+        PgmSenderOptions options = Options(onDemandParityPacketCount: 0);
+        await using PgmSender sender = new PgmSender(source, options);
+
+        await sender.StartAsync();
+        await sender.SendAsync(new byte[] { 4 });
+        _ = await ReceivePacketAsync(receiver, PgmPacketType.OriginalData);
+
+        await receiver.SendAsync(CreateNak(options, sequenceNumber: 9999));
+        await receiver.SendAsync(CreateNak(options, sequenceNumber: 1));
+
+        byte[] ncfDatagram = await ReceivePacketAsync(receiver, PgmPacketType.NakConfirmation);
+        _ = PgmPacket.TryParse(ncfDatagram, out var ncf);
+        _ = ncf.TryGetNak(out var ncfBody);
+        uint ncfSeq = ncfBody.SequenceNumber;
+
+        await Assert.That(ncfSeq).IsEqualTo(1U);
+    }
+
+    [Test]
     public async Task PgmSender_Sends_Proactive_Fec_Parity_For_Complete_Group()
     {
         InMemoryMulticastBus bus = new(seed: 42);
@@ -132,12 +206,45 @@ public sealed class PgmSenderStateTests
         await Assert.That(groupNumber).IsEqualTo(0U);
     }
 
-    private static PgmSenderOptions Options(int maximumDataPayloadLength = 1200, int fecTransmissionGroupSize = 4)
+    [Test]
+    public async Task PgmSender_Evicts_Oldest_Sequence_When_Window_Is_Full()
+    {
+        InMemoryMulticastBus bus = new(seed: 42);
+        await using InMemoryDatagramChannel source = bus.CreateChannel();
+        await using InMemoryDatagramChannel receiver = bus.CreateChannel();
+        PgmSenderOptions options = Options(onDemandParityPacketCount: 0, transmitWindowPacketCount: 1);
+        await using PgmSender sender = new PgmSender(source, options);
+
+        await sender.StartAsync();
+        await sender.SendAsync(new byte[] { 1 });
+        await sender.SendAsync(new byte[] { 2 });
+        _ = await ReceivePacketAsync(receiver, PgmPacketType.OriginalData);
+        _ = await ReceivePacketAsync(receiver, PgmPacketType.OriginalData);
+
+        // Sequence 1 was evicted from the single-packet window, so only sequence 2 can be repaired.
+        await receiver.SendAsync(CreateNak(options, sequenceNumber: 1));
+        await receiver.SendAsync(CreateNak(options, sequenceNumber: 2));
+
+        byte[] ncfDatagram = await ReceivePacketAsync(receiver, PgmPacketType.NakConfirmation);
+        _ = PgmPacket.TryParse(ncfDatagram, out var ncf);
+        _ = ncf.TryGetNak(out var ncfBody);
+        uint ncfSeq = ncfBody.SequenceNumber;
+
+        await Assert.That(ncfSeq).IsEqualTo(2U);
+    }
+
+    private static PgmSenderOptions Options(
+        int maximumDataPayloadLength = 1200,
+        int fecTransmissionGroupSize = 4,
+        int onDemandParityPacketCount = 1,
+        int transmitWindowPacketCount = 1024)
     {
         return new PgmSenderOptions
         {
             MaximumDataPayloadLength = maximumDataPayloadLength,
             FecTransmissionGroupSize = fecTransmissionGroupSize,
+            OnDemandParityPacketCount = onDemandParityPacketCount,
+            TransmitWindowPacketCount = transmitWindowPacketCount,
             SourcePathMessageInterval = TimeSpan.FromSeconds(30),
             GlobalSourceId = new PgmGlobalSourceId(0x010203040506),
         };
@@ -158,6 +265,50 @@ public sealed class PgmSenderStateTests
         byte[] datagram = new byte[packet.EncodedLength];
         _ = packet.TryWrite(datagram);
         return datagram;
+    }
+
+    private static byte[] CreateNakWithList(PgmSenderOptions options, uint sequenceNumber, params uint[] additional)
+    {
+        byte[] optionBytes = new byte[4 + 4 + (additional.Length * 4)];
+        _ = PgmOptionCodec.TryWriteLength(optionBytes, (ushort)optionBytes.Length, isLast: false);
+        _ = PgmOptionCodec.TryWriteNakList(optionBytes.AsSpan(4), additional, isLast: true);
+
+        PgmHeader header = new PgmHeader(
+            options.SourcePort,
+            options.DestinationPort,
+            PgmPacketType.NegativeAcknowledgment,
+            PgmHeaderOptions.OptionsPresent,
+            0,
+            options.GlobalSourceId,
+            0);
+        PgmNakPacket body = new PgmNakPacket(sequenceNumber, options.SourceAddress, options.GroupAddress);
+        PgmPacket packet = PgmPacket.CreateNakLike(header, body, optionBytes);
+        byte[] datagram = new byte[packet.EncodedLength];
+        _ = packet.TryWrite(datagram);
+        return datagram;
+    }
+
+    private static async Task<List<uint>> CollectRepairSequencesAsync(InMemoryDatagramChannel channel, int count)
+    {
+        using CancellationTokenSource cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        byte[] buffer = new byte[2048];
+        List<uint> sequences = new List<uint>();
+
+        while (sequences.Count < count)
+        {
+            int byteCount = await channel.ReceiveAsync(buffer, cancellation.Token);
+            if (!PgmUdpEncapsulation.TryParsePayload(buffer.AsSpan(0, byteCount), out var packet))
+            {
+                continue;
+            }
+
+            if (packet.Header.Type == PgmPacketType.RepairData && packet.TryGetData(out var data))
+            {
+                sequences.Add(data.SequenceNumber);
+            }
+        }
+
+        return sequences;
     }
 
     private static async Task<byte[]> ReceivePacketAsync(

@@ -54,4 +54,60 @@ public sealed class CongestionAckerElectionTests
         await Assert.That(found).IsTrue();
         await Assert.That(report!.ReceiverId).IsEqualTo(1UL);
     }
+
+    [Test]
+    public async Task AckerElection_NoReports_TryGetAckerReturnsFalse()
+    {
+        AckerElection election = new AckerElection(new ManualTimeProvider(), TimeSpan.FromSeconds(10));
+
+        bool found = election.TryGetAcker(out ReceiverCongestionReport? report);
+
+        await Assert.That(found).IsFalse();
+        await Assert.That(report).IsNull();
+        await Assert.That(election.CurrentAckerId).IsNull();
+    }
+
+    [Test]
+    public async Task AckerElection_EqualLossAndThroughput_PrefersLargerRoundTrip()
+    {
+        AckerElection election = new AckerElection(new ManualTimeProvider(), TimeSpan.FromSeconds(10));
+
+        election.Report(new ReceiverCongestionReport(1, 0.1, 1_000, TimeSpan.FromMilliseconds(20)));
+        election.Report(new ReceiverCongestionReport(2, 0.1, 1_000, TimeSpan.FromMilliseconds(40)));
+
+        await Assert.That(election.CurrentAckerId).IsEqualTo(2UL);
+    }
+
+    [Test]
+    public async Task AckerElection_FullyTiedReports_PreferLowerReceiverId()
+    {
+        AckerElection election = new AckerElection(new ManualTimeProvider(), TimeSpan.FromSeconds(10));
+
+        election.Report(new ReceiverCongestionReport(2, 0.1, 1_000, TimeSpan.FromMilliseconds(20)));
+        election.Report(new ReceiverCongestionReport(1, 0.1, 1_000, TimeSpan.FromMilliseconds(20)));
+
+        await Assert.That(election.CurrentAckerId).IsEqualTo(1UL);
+    }
+
+    [Test]
+    public async Task AckerElection_NullTimeProvider_Throws()
+    {
+        await Assert.That(() => new AckerElection(null!, TimeSpan.FromSeconds(1)))
+            .Throws<ArgumentNullException>();
+    }
+
+    [Test]
+    public async Task AckerElection_NonPositiveLifetime_Throws()
+    {
+        await Assert.That(() => new AckerElection(new ManualTimeProvider(), TimeSpan.Zero))
+            .Throws<ArgumentOutOfRangeException>();
+    }
+
+    [Test]
+    public async Task AckerElection_NullReport_Throws()
+    {
+        AckerElection election = new AckerElection(new ManualTimeProvider(), TimeSpan.FromSeconds(1));
+
+        await Assert.That(() => election.Report(null!)).Throws<ArgumentNullException>();
+    }
 }
