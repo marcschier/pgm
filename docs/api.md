@@ -47,3 +47,14 @@ The package surface is two classes plus their options. Both are `IAsyncDisposabl
 
 For network-free testing use `InMemoryMulticastBus` (`Pgm.Net`) with `datagramLossRate` / `datagramReorderRate` /
 `datagramDuplicateRate` / `seed` and pass `bus.CreateChannel()` to each end.
+
+## Strong naming
+
+The `Pgm` assembly is strong-named with a committed key (`eng/Pgm.snk`) so it can be referenced from other strong-named assemblies. A strong-name key is an identity, not a secret — committing it keeps builds reproducible and needs no CI secret wiring.
+
+```text
+Public key token: 83cf9066eeb59688
+Public key:       002400000480000094000000060200000024000052534131000400000100010015BEC79DF79E711E2063918595128D0AF97FD0D0258B7FFAC1D666F4B484EB7F2BA081749D435F76B018CEA4025021F3BE3463CBA366305E0F1EAB77693CD0DECD7B6012A4A95C322DD58481310BD23EA1F0189D5DAEAF282FC76CFC5B490129618E45075A1E0FD4DEA62E1FCC919B957D1ACE892829AE49244BC94FA2BD47C0
+```
+
+Only the shipping library and its friend test assembly (`Pgm.Tests`) are signed; the samples and benchmarks use the public API only and stay unsigned.

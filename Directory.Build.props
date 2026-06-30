@@ -26,6 +26,18 @@
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
+  <!-- ───────────────────────────── Strong naming ────────────────────────────────── -->
+  <!-- The shipping library (Pgm) and its friend test assembly (Pgm.Tests) are signed with a
+       committed key: a strong-name key is an identity, not a secret, so committing it keeps
+       builds reproducible and requires no CI/secret wiring. PgmPublicKey is the full public
+       key of eng/Pgm.snk (token 83cf9066eeb59688); the library's InternalsVisibleTo item
+       references it so the signed test assembly retains internals access. SignAssembly is
+       opted in per-project (Pgm and Pgm.Tests only); samples and benchmarks stay unsigned. -->
+  <PropertyGroup>
+    <StrongNameKeyPath>$(MSBuildThisFileDirectory)eng\Pgm.snk</StrongNameKeyPath>
+    <PgmPublicKey>002400000480000094000000060200000024000052534131000400000100010015BEC79DF79E711E2063918595128D0AF97FD0D0258B7FFAC1D666F4B484EB7F2BA081749D435F76B018CEA4025021F3BE3463CBA366305E0F1EAB77693CD0DECD7B6012A4A95C322DD58481310BD23EA1F0189D5DAEAF282FC76CFC5B490129618E45075A1E0FD4DEA62E1FCC919B957D1ACE892829AE49244BC94FA2BD47C0</PgmPublicKey>
+  </PropertyGroup>
+
   <!-- ───────────────────────────── Project-kind flags ───────────────────────────── -->
   <PropertyGroup>
     <_IsProductionLibrary Condition="'$(IsTestProject)' != 'true' AND '$(IsSampleProject)' != 'true' AND '$(IsBenchmarkProject)' != 'true'">true</_IsProductionLibrary>

@@ -4,9 +4,16 @@
     <TargetFrameworks>netstandard2.0;netstandard2.1;net8.0;net9.0;net10.0</TargetFrameworks>
     <AssemblyName>Pgm</AssemblyName>
     <RootNamespace>Pgm</RootNamespace>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>$(StrongNameKeyPath)</AssemblyOriginatorKeyFile>
     <Description>A pure-managed, NativeAOT-ready implementation of PGM (Pragmatic General Multicast, RFC 3208) reliable multicast over UDP.</Description>
     <PackageTags>pgm;multicast;reliable-multicast;rfc3208;networking</PackageTags>
   </PropertyGroup>
+
+  <!-- The signed test assembly is a friend; the public key keeps internals visible to it. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Pgm.Tests" Key="$(PgmPublicKey)" />
+  </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0' OR '$(TargetFramework)' == 'netstandard2.1'">
     <PackageReference Include="System.Threading.Channels" />
