@@ -37,7 +37,8 @@ public sealed class FragmentAssemblyTests
         await Assert.That(first).IsTrue();
         await Assert.That(second).IsTrue();
         await Assert.That(assembly.IsComplete).IsTrue();
-        await Assert.That(assembly.ToArray()).IsEquivalentTo(new byte[] { 104, 101, 108, 108, 111 });
+        await Assert.That(assembly.ToArray())
+            .IsEquivalentTo(new byte[] { 104, 101, 108, 108, 111 }, EqualityComparer<byte>.Default);
     }
 
     [Test]

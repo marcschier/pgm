@@ -5,6 +5,7 @@
     <OutputType>Exe</OutputType>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>$(StrongNameKeyPath)</AssemblyOriginatorKeyFile>
+    <PublishAot Condition="'$(AotTest)' == 'true'">true</PublishAot>
   </PropertyGroup>
 
   <ItemGroup>

@@ -50,7 +50,7 @@ public sealed class PgmBodiesTests
 
         await Assert.That(bodyLength).IsEqualTo(11);
         await Assert.That(tsduLength).IsEqualTo((ushort)3);
-        await Assert.That(copy).IsEquivalentTo(data);
+        await Assert.That(copy).IsEquivalentTo(data, EqualityComparer<byte>.Default);
     }
 
     [Test]

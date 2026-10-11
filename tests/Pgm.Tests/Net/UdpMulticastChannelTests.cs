@@ -57,7 +57,8 @@ public sealed class UdpMulticastChannelTests
             }
 
             var length = await receive;
-            await Assert.That(buffer.AsSpan(0, length).ToArray()).IsEquivalentTo(payload);
+            await Assert.That(buffer.AsSpan(0, length).ToArray())
+                .IsEquivalentTo(payload, EqualityComparer<byte>.Default);
         }
         catch (OperationCanceledException)
         {

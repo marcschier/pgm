@@ -43,8 +43,10 @@ public sealed class EndToEndPgmFacadeTests
 
         string[] expected = CreateExpectedMessages(messageCount);
 
-        await Assert.That(await ReceiveMessagesAsync(first, messageCount, timeout.Token)).IsEquivalentTo(expected);
-        await Assert.That(await ReceiveMessagesAsync(second, messageCount, timeout.Token)).IsEquivalentTo(expected);
+        await Assert.That(await ReceiveMessagesAsync(first, messageCount, timeout.Token))
+            .IsEquivalentTo(expected, EqualityComparer<string>.Default);
+        await Assert.That(await ReceiveMessagesAsync(second, messageCount, timeout.Token))
+            .IsEquivalentTo(expected, EqualityComparer<string>.Default);
     }
 
     private static PgmPublisherOptions PublisherOptions()
