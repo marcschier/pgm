@@ -167,7 +167,7 @@ public sealed class PgmSenderLifecycleTests
         _ = packet.TryGetData(out var data);
         byte[] received = data.GetDataBytes();
 
-        await Assert.That(received).IsEquivalentTo(payload);
+        await Assert.That(received).IsEquivalentTo(payload, EqualityComparer<byte>.Default);
     }
 
     private static PgmSenderOptions Options()

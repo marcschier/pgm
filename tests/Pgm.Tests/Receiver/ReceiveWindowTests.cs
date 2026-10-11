@@ -17,7 +17,7 @@ public sealed class ReceiveWindowTests
     {
         string[] expected = ["one", "two", "three"];
 
-        await Assert.That(RunDataBeforeSpm()).IsEquivalentTo(expected);
+        await Assert.That(RunDataBeforeSpm()).IsEquivalentTo(expected, EqualityComparer<string>.Default);
     }
 
     [Test]
@@ -25,7 +25,7 @@ public sealed class ReceiveWindowTests
     {
         string[] expected = ["one", "five"];
 
-        await Assert.That(RunSpmAdvance()).IsEquivalentTo(expected);
+        await Assert.That(RunSpmAdvance()).IsEquivalentTo(expected, EqualityComparer<string>.Default);
     }
 
     [Test]
@@ -47,7 +47,7 @@ public sealed class ReceiveWindowTests
         string[] expected = ["two"];
 
         await Assert.That(firstNakCount).IsEqualTo(1);
-        await Assert.That(delivered).IsEquivalentTo(expected);
+        await Assert.That(delivered).IsEquivalentTo(expected, EqualityComparer<string>.Default);
     }
 
     [Test]
@@ -55,7 +55,7 @@ public sealed class ReceiveWindowTests
     {
         string[] expected = ["abc"];
 
-        await Assert.That(RunIncompleteFecGroup()).IsEquivalentTo(expected);
+        await Assert.That(RunIncompleteFecGroup()).IsEquivalentTo(expected, EqualityComparer<string>.Default);
     }
 
     private static List<string> RunDataBeforeSpm()

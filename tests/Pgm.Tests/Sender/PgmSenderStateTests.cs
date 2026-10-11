@@ -36,9 +36,9 @@ public sealed class PgmSenderStateTests
             out uint length);
 
         await Assert.That(firstSeq).IsEqualTo(1U);
-        await Assert.That(firstBytes).IsEquivalentTo(new byte[] { 1, 2, 3 });
+        await Assert.That(firstBytes).IsEquivalentTo(new byte[] { 1, 2, 3 }, EqualityComparer<byte>.Default);
         await Assert.That(secondSeq).IsEqualTo(2U);
-        await Assert.That(secondBytes).IsEquivalentTo(new byte[] { 4, 5 });
+        await Assert.That(secondBytes).IsEquivalentTo(new byte[] { 4, 5 }, EqualityComparer<byte>.Default);
         await Assert.That(fragmentRead).IsTrue();
         await Assert.That(firstSequenceNumber).IsEqualTo(1U);
         await Assert.That(offset).IsEqualTo(0U);
@@ -100,7 +100,7 @@ public sealed class PgmSenderStateTests
 
         await Assert.That(ncfSeq).IsEqualTo(sequenceNumber);
         await Assert.That(repairSeq).IsEqualTo(sequenceNumber);
-        await Assert.That(repairBytes).IsEquivalentTo(new byte[] { 7, 8, 9 });
+        await Assert.That(repairBytes).IsEquivalentTo(new byte[] { 7, 8, 9 }, EqualityComparer<byte>.Default);
     }
 
     [Test]

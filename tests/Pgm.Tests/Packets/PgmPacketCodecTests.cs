@@ -20,7 +20,7 @@ public sealed class PgmPacketCodecTests
         var leadingEdge = body.LeadingEdgeSequenceNumber;
 
         await Assert.That(type).IsEqualTo(PgmPacketType.SourcePathMessage);
-        await Assert.That(addressBytes).IsEquivalentTo(new byte[] { 192, 0, 2, 1 });
+        await Assert.That(addressBytes).IsEquivalentTo(new byte[] { 192, 0, 2, 1 }, EqualityComparer<byte>.Default);
         await Assert.That(leadingEdge).IsEqualTo(3U);
     }
 
@@ -44,8 +44,8 @@ public sealed class PgmPacketCodecTests
         var dataBytes = body.GetDataBytes();
 
         await Assert.That(type).IsEqualTo(PgmPacketType.OriginalData);
-        await Assert.That(optionBytes).IsEquivalentTo(options);
-        await Assert.That(dataBytes).IsEquivalentTo(data);
+        await Assert.That(optionBytes).IsEquivalentTo(options, EqualityComparer<byte>.Default);
+        await Assert.That(dataBytes).IsEquivalentTo(data, EqualityComparer<byte>.Default);
     }
 
     [Test]
@@ -72,7 +72,7 @@ public sealed class PgmPacketCodecTests
 
             await Assert.That(parsedType).IsEqualTo(type);
             await Assert.That(sequence).IsEqualTo(99U);
-            await Assert.That(groupBytes).IsEquivalentTo(new byte[] { 239, 192, 0, 1 });
+            await Assert.That(groupBytes).IsEquivalentTo(new byte[] { 239, 192, 0, 1 }, EqualityComparer<byte>.Default);
         }
     }
 

@@ -15,7 +15,8 @@ public sealed class PgmAddressConversionTests
         PgmNetworkAddress result = PgmAddressConversion.ToPgmAddress(address);
 
         await Assert.That(result.AddressFamily).IsEqualTo(PgmAddressFamily.IPv4);
-        await Assert.That(result.GetAddressBytes()).IsEquivalentTo(address.GetAddressBytes());
+        await Assert.That(result.GetAddressBytes())
+            .IsEquivalentTo(address.GetAddressBytes(), EqualityComparer<byte>.Default);
     }
 
     [Test]
@@ -26,7 +27,8 @@ public sealed class PgmAddressConversionTests
         PgmNetworkAddress result = PgmAddressConversion.ToPgmAddress(address);
 
         await Assert.That(result.AddressFamily).IsEqualTo(PgmAddressFamily.IPv6);
-        await Assert.That(result.GetAddressBytes()).IsEquivalentTo(address.GetAddressBytes());
+        await Assert.That(result.GetAddressBytes())
+            .IsEquivalentTo(address.GetAddressBytes(), EqualityComparer<byte>.Default);
     }
 
     [Test]

@@ -29,9 +29,12 @@ public sealed class PgmReceiverTests
         await SendAsync(sourceChannel, CreateData(3, 1, Bytes("three")), timeout.Token);
         await SendAsync(sourceChannel, CreateSpm(1, 3), timeout.Token);
 
-        await Assert.That(await receiver.ReceiveAsync(timeout.Token)).IsEquivalentTo(Bytes("one"));
-        await Assert.That(await receiver.ReceiveAsync(timeout.Token)).IsEquivalentTo(Bytes("two"));
-        await Assert.That(await receiver.ReceiveAsync(timeout.Token)).IsEquivalentTo(Bytes("three"));
+        await Assert.That(await receiver.ReceiveAsync(timeout.Token))
+            .IsEquivalentTo(Bytes("one"), EqualityComparer<byte>.Default);
+        await Assert.That(await receiver.ReceiveAsync(timeout.Token))
+            .IsEquivalentTo(Bytes("two"), EqualityComparer<byte>.Default);
+        await Assert.That(await receiver.ReceiveAsync(timeout.Token))
+            .IsEquivalentTo(Bytes("three"), EqualityComparer<byte>.Default);
     }
 
     [Test]
@@ -48,7 +51,8 @@ public sealed class PgmReceiverTests
         await SendAsync(sourceChannel, CreateFragment(1, 1, 0, 5, Bytes("he")), timeout.Token);
         await SendAsync(sourceChannel, CreateFragment(2, 1, 2, 5, Bytes("llo")), timeout.Token);
 
-        await Assert.That(await receiver.ReceiveAsync(timeout.Token)).IsEquivalentTo(Bytes("hello"));
+        await Assert.That(await receiver.ReceiveAsync(timeout.Token))
+            .IsEquivalentTo(Bytes("hello"), EqualityComparer<byte>.Default);
     }
 
     [Test]
@@ -67,10 +71,13 @@ public sealed class PgmReceiverTests
         await SendAsync(sourceChannel, CreateData(1, 1, Bytes("one")), timeout.Token);
         await SendAsync(sourceChannel, CreateData(3, 1, Bytes("three")), timeout.Token);
 
-        await Assert.That(await receiver.ReceiveAsync(timeout.Token)).IsEquivalentTo(Bytes("one"));
+        await Assert.That(await receiver.ReceiveAsync(timeout.Token))
+            .IsEquivalentTo(Bytes("one"), EqualityComparer<byte>.Default);
         await Assert.That(await observedNak.Task.WaitAsync(timeout.Token)).IsEqualTo(2U);
-        await Assert.That(await receiver.ReceiveAsync(timeout.Token)).IsEquivalentTo(Bytes("two"));
-        await Assert.That(await receiver.ReceiveAsync(timeout.Token)).IsEquivalentTo(Bytes("three"));
+        await Assert.That(await receiver.ReceiveAsync(timeout.Token))
+            .IsEquivalentTo(Bytes("two"), EqualityComparer<byte>.Default);
+        await Assert.That(await receiver.ReceiveAsync(timeout.Token))
+            .IsEquivalentTo(Bytes("three"), EqualityComparer<byte>.Default);
 
         timeout.Cancel();
         await IgnoreCanceledAsync(responder);
@@ -98,9 +105,12 @@ public sealed class PgmReceiverTests
         await SendAsync(sourceChannel, CreateFecData(3, sourceBlocks[2], false), timeout.Token);
         await SendAsync(sourceChannel, CreateFecData(4, parity[0], true), timeout.Token);
 
-        await Assert.That(await receiver.ReceiveAsync(timeout.Token)).IsEquivalentTo(sourceBlocks[0]);
-        await Assert.That(await receiver.ReceiveAsync(timeout.Token)).IsEquivalentTo(sourceBlocks[1]);
-        await Assert.That(await receiver.ReceiveAsync(timeout.Token)).IsEquivalentTo(sourceBlocks[2]);
+        await Assert.That(await receiver.ReceiveAsync(timeout.Token))
+            .IsEquivalentTo(sourceBlocks[0], EqualityComparer<byte>.Default);
+        await Assert.That(await receiver.ReceiveAsync(timeout.Token))
+            .IsEquivalentTo(sourceBlocks[1], EqualityComparer<byte>.Default);
+        await Assert.That(await receiver.ReceiveAsync(timeout.Token))
+            .IsEquivalentTo(sourceBlocks[2], EqualityComparer<byte>.Default);
     }
 
     private static PgmReceiver CreateReceiver(IPgmDatagramChannel channel)

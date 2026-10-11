@@ -106,7 +106,7 @@ public sealed class PgmPrimitivesTests
         await Assert.That(parsed).IsTrue();
         await Assert.That(read).IsEqualTo(address.EncodedLength);
         await Assert.That(roundTripped == address).IsTrue();
-        await Assert.That(roundTripped.GetAddressBytes()).IsEquivalentTo(bytes);
+        await Assert.That(roundTripped.GetAddressBytes()).IsEquivalentTo(bytes, EqualityComparer<byte>.Default);
     }
 
     [Test]
